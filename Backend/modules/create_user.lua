@@ -55,7 +55,7 @@ local function create_user_rpc(context, payload)
   local profile_value = {
     username = username,
     email = email,
-    guest = false,
+    guest = True,
     created_at = nk.time() * 1000
   }
 
@@ -103,3 +103,4 @@ local function create_user_rpc(context, payload)
 end
 
 nk.register_rpc(create_user_rpc, "create_user")
+
