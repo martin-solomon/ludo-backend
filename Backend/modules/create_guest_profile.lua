@@ -21,18 +21,24 @@ local function create_guest_profile_rpc(context, payload)
   local username = input.username or ""
   local email = input.email or ""
 
-  -- Must have session user_id (the device-authenticated user)
-  local user_id = nil
-  if context and context.user_id then
-    user_id = context.user_id
-  else
+  -- Must have session user_id
+  if not context or not context.user_id then
     return nk.json_encode({ error = "no_session" }), 401
   end
 
+  local user_id = context.user_id
+
+  -- 🔹 PROFILE INITIALIZATION (SERVER AUTHORITATIVE)
   local profile_value = {
     username = username,
     email = email,
     guest = true,
+
+    -- ✅ ADDED FIELDS
+    coins = 100,
+    xp = 0,
+    level = 1,
+
     created_at = nk.time() * 1000
   }
 
@@ -47,11 +53,15 @@ local function create_guest_profile_rpc(context, payload)
 
   local ok, err = pcall(nk.storage_write, { profile_obj })
   if not ok then
-    nk.logger_error("create_guest_profile: storage_write failed user_id=%s err=%s", tostring(user_id), tostring(err))
+    nk.logger_error(
+      "create_guest_profile: storage_write failed user_id=%s err=%s",
+      tostring(user_id),
+      tostring(err)
+    )
     return nk.json_encode({ error = "storage_write_failed" }), 500
   end
 
-  -- username index
+  -- Username index (unchanged)
   if type(username) == "string" and username ~= "" then
     local username_key = string.lower(username)
     local index_obj = {
@@ -66,9 +76,14 @@ local function create_guest_profile_rpc(context, payload)
       permission_read = 2,
       permission_write = 0
     }
+
     local ok2, err2 = pcall(nk.storage_write, { index_obj })
     if not ok2 then
-      nk.logger_error("create_guest_profile: username index write failed key=%s err=%s", tostring(username_key), tostring(err2))
+      nk.logger_error(
+        "create_guest_profile: username index write failed key=%s err=%s",
+        tostring(username_key),
+        tostring(err2)
+      )
     end
   end
 
