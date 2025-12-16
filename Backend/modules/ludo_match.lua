@@ -1,6 +1,10 @@
 -- ludo_match.lua
 local nk = require("nakama")
-local apply_rewards = require("apply_match_rewards") -- ✅ SERVER REWARD LOGIC
+
+-- Core server-side modules
+local apply_rewards = require("apply_match_rewards")     -- rewards, level, coins
+local update_daily_tasks = require("update_daily_tasks") -- daily task tracking
+
 local M = {}
 
 function M.match_init(context, params)
@@ -88,8 +92,11 @@ function M.match_loop(context, dispatcher, tick, state, messages)
           result = "win"
         }
 
-        -- ✅ APPLY REWARDS ON SERVER (AUTHORITATIVE)
+        -- ✅ Apply rewards (coins, xp, level, wins)
         apply_rewards(user_id, rewards)
+
+        -- ✅ Update daily tasks (play match + win)
+        update_daily_tasks(user_id, "win")
 
         dispatcher.broadcast_message(1, nk.json_encode({
           type = "game_over",
