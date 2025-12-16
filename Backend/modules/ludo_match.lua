@@ -1,5 +1,6 @@
 -- ludo_match.lua
 local nk = require("nakama")
+local apply_rewards = require("apply_match_rewards") -- ✅ SERVER REWARD LOGIC
 local M = {}
 
 function M.match_init(context, params)
@@ -76,19 +77,24 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         value = dice
       }))
 
-      -- TEMP WIN CONDITION (for testing)
+      -- TEMP WIN CONDITION (FOR TESTING)
       if dice == 6 then
         state.game_over = true
         state.winner = user_id
-        state.rewards = {
+
+        local rewards = {
           coins = 100,
-          xp = 50
+          xp = 50,
+          result = "win"
         }
+
+        -- ✅ APPLY REWARDS ON SERVER (AUTHORITATIVE)
+        apply_rewards(user_id, rewards)
 
         dispatcher.broadcast_message(1, nk.json_encode({
           type = "game_over",
           winner = user_id,
-          rewards = state.rewards
+          rewards = rewards
         }))
 
         nk.logger_info("Match ended. Winner: " .. user_id)
