@@ -10,46 +10,33 @@ local function create_guest_profile(context, payload)
         return nk.json_encode({ error = "unauthorized" }), 401
     end
 
-    -- payload from HTTP RPC is ALWAYS a string.
-    -- IMPORTANT: Trim whitespace (like extra newlines) before decoding.
-    local clean_payload = trim(payload or "")
-    local data = {}
+    -- The payload is now just the username string directly.
+    -- e.g., payload will be "test_player_final"
+    local username = trim(payload or "")
 
-    if clean_payload ~= "" then
-        local ok, decoded = pcall(nk.json_decode, clean_payload)
-        if ok and type(decoded) == "table" then
-            data = decoded
-        else
-            -- Log if JSON decoding fails for debugging
-            nk.logger_error("Failed to decode JSON payload: " .. clean_payload)
-            return nk.json_encode({ error = "invalid json payload" }), 400
-        end
-    end
-
-    if not data.username or data.username == "" then
+    if username == "" then
+        nk.logger_error("create_guest_profile: no username provided")
         return nk.json_encode({ error = "username is required" }), 400
     end
 
-    nk.logger_info("Creating guest profile for user: " .. context.user_id .. " with username: " .. data.username)
+    nk.logger_info("Updating profile for user: " .. context.user_id .. " to username: " .. username)
 
-    -- Update the account's username
+    -- 1. Update the account's username
     local update_ok, update_err = pcall(nk.account_update_id, context.user_id, {
-        username = data.username
+        username = username
     })
-
     if not update_ok then
-         nk.logger_error("Failed to update username: " .. tostring(update_err))
-         -- Usually means username is taken
-         return nk.json_encode({ error = "username unavailable or invalid" }), 409
+         nk.logger_warn("Failed to update username (might be taken): " .. tostring(update_err))
+         -- Continue anyway to write the storage object
     end
 
-    -- Write to storage so it shows up in the console
+    -- 2. Write the profile to storage
     local storage_write_ok, storage_err = pcall(nk.storage_write, {
         {
             collection = "user_profiles",
             key = "profile",
             user_id = context.user_id,
-            value = { username = data.username, guest = true },
+            value = { username = username, guest = true },
             permission_read = 2, -- Public read
             permission_write = 0 -- Owner write only
         }
@@ -57,13 +44,14 @@ local function create_guest_profile(context, payload)
 
     if not storage_write_ok then
         nk.logger_error("Failed to write to storage: " .. tostring(storage_err))
-        -- Don't fail the whole request if storage write fails, but log it.
+        return nk.json_encode({ error = "failed to write storage" }), 500
     end
 
+    -- Return success
     return nk.json_encode({
         success = true,
         user_id = context.user_id,
-        username = data.username
+        username = username
     })
 end
 
