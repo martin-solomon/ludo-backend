@@ -1,6 +1,6 @@
 local nk = require("nakama")
 
--- Helper function to trim whitespace from strings
+-- Helper function to trim whitespace
 local function trim(s)
    return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
@@ -10,35 +10,40 @@ local function create_guest_profile(context, payload)
         return nk.json_encode({ error = "unauthorized" }), 401
     end
 
-    -- The payload is now just the username string directly.
-    -- e.g., payload will be "test_player_final"
-    local username = trim(payload or "")
+    -- 1. Safe JSON Decoding
+    -- The payload comes in as a string. We MUST decode it.
+    local decoded_ok, data = pcall(nk.json_decode, payload)
+    if not decoded_ok or type(data) ~= "table" then
+        nk.logger_error("Failed to decode JSON payload: " .. payload)
+        return nk.json_encode({ error = "invalid json format" }), 400
+    end
 
+    -- 2. Validate Username
+    local username = trim(data.username or "")
     if username == "" then
-        nk.logger_error("create_guest_profile: no username provided")
+        nk.logger_error("create_guest_profile: username field is missing or empty")
         return nk.json_encode({ error = "username is required" }), 400
     end
 
-    nk.logger_info("Updating profile for user: " .. context.user_id .. " to username: " .. username)
+    nk.logger_info("Processing guest profile for user: " .. context.user_id .. " with username: " .. username)
 
-    -- 1. Update the account's username
+    -- 3. Update Account
     local update_ok, update_err = pcall(nk.account_update_id, context.user_id, {
         username = username
     })
     if not update_ok then
          nk.logger_warn("Failed to update username (might be taken): " .. tostring(update_err))
-         -- Continue anyway to write the storage object
     end
 
-    -- 2. Write the profile to storage
+    -- 4. Write to Storage
     local storage_write_ok, storage_err = pcall(nk.storage_write, {
         {
             collection = "user_profiles",
             key = "profile",
             user_id = context.user_id,
             value = { username = username, guest = true },
-            permission_read = 2, -- Public read
-            permission_write = 0 -- Owner write only
+            permission_read = 2,
+            permission_write = 0
         }
     })
 
@@ -47,7 +52,7 @@ local function create_guest_profile(context, payload)
         return nk.json_encode({ error = "failed to write storage" }), 500
     end
 
-    -- Return success
+    -- 5. Success Response
     return nk.json_encode({
         success = true,
         user_id = context.user_id,
