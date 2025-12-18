@@ -11,7 +11,6 @@ pcall(function() require("main_helpers") end)
 local function safe_require(name)
   local ok, result = pcall(require, name)
   if not ok then
-    -- result contains the error message when pcall fails
     nk.logger_error("main.lua: require '" .. name .. "' failed: " .. tostring(result))
     return nil, result
   end
@@ -19,12 +18,14 @@ local function safe_require(name)
   return result, nil
 end
 
--- 1) Low-level helpers that other modules depend on should be loaded first.
--- Ensure you have ./modules/utils_rpc.lua (it provides parse_rpc_payload etc.)
+----------------------------------------------------------------
+-- 1) Low-level helpers
+----------------------------------------------------------------
 safe_require("utils_rpc")
 
--- 2) Register core RPCs that create/update user storage and support account lifecycle.
--- Load cleanup early so it is available (you may also want it scheduled / called by admin).
+----------------------------------------------------------------
+-- 2) Core account / profile RPCs
+----------------------------------------------------------------
 local rpc_first = {
   "create_guest_profile",
   "create_user",
@@ -37,14 +38,25 @@ for _, m in ipairs(rpc_first) do
   safe_require(m)
 end
 
--- 3) Load match and gameplay modules (ludo_match + any authoritative match handlers).
--- If ludo_match.lua returns a match module table, Nakama will register it automatically.
-local match_mod, match_err = safe_require("ludo_match")
-if not match_mod then
-  nk.logger_warn("main.lua: ludo_match not loaded or returned nil: " .. tostring(match_err))
+----------------------------------------------------------------
+-- 3) Authoritative Match Registration (CRITICAL)
+----------------------------------------------------------------
+local ludo_match, match_err = safe_require("ludo_match")
+if ludo_match then
+  nk.match_register("ludo_match", ludo_match)
+  nk.logger_info("main.lua: ludo_match registered successfully")
+else
+  nk.logger_warn("main.lua: ludo_match NOT registered: " .. tostring(match_err))
 end
 
--- 4) Load RPCs that depend on match or general services (load after match if needed).
+----------------------------------------------------------------
+-- 4) Match-related & gameplay RPCs
+----------------------------------------------------------------
+-- These depend on match existing
+safe_require("rpc_create_match")
+safe_require("rpc_get_profile")
+
+-- Existing late RPCs
 local rpc_late = {
   "rpc_quick_join",
   "rpc_player_list",
@@ -55,5 +67,7 @@ for _, m in ipairs(rpc_late) do
   safe_require(m)
 end
 
+----------------------------------------------------------------
 -- 5) Final startup log
-nk.logger_info("main.lua loaded: runtime modules required and RPCs registered.")
+----------------------------------------------------------------
+nk.logger_info("✅ main.lua loaded: matches + RPCs registered safely")
