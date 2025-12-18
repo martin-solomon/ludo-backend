@@ -1,18 +1,18 @@
 -- main.lua
 -- Central loader for Nakama Lua modules.
--- SAFE version with explicit match registration (required for Lua)
+-- FINAL SAFE VERSION (Lua-authoritative compliant)
 
 local nk = require("nakama")
 
 ------------------------------------------------
--- Optional helpers (must NOT touch nk)
+-- Optional helpers
 ------------------------------------------------
 pcall(function()
   require("main_helpers")
 end)
 
 ------------------------------------------------
--- Safe require helper (for logging only)
+-- Safe require helper
 ------------------------------------------------
 local function safe_require(name)
   local ok, result = pcall(require, name)
@@ -30,7 +30,7 @@ end
 safe_require("utils_rpc")
 
 ------------------------------------------------
--- 2) Core account / profile RPCs
+-- 2) Account / profile RPCs
 ------------------------------------------------
 safe_require("create_guest_profile")
 safe_require("create_user")
@@ -39,15 +39,12 @@ safe_require("admin_delete_account")
 safe_require("guest_cleanup")
 
 ------------------------------------------------
--- 3) Match logic (EXPLICIT REGISTRATION REQUIRED)
+-- 3) Match handler
+-- IMPORTANT:
+-- ludo_match.lua RETURNS the match table
+-- Nakama auto-registers it
 ------------------------------------------------
-local ludo_match = safe_require("ludo_match")
-if ludo_match then
-  nk.match_register("ludo_match", ludo_match)
-  nk.logger_info("✅ Match handler 'ludo_match' registered")
-else
-  nk.logger_error("❌ ludo_match failed to load — match creation will fail")
-end
+safe_require("ludo_match")
 
 ------------------------------------------------
 -- 4) Match-related RPCs
@@ -61,4 +58,4 @@ safe_require("rpc_get_profile")
 ------------------------------------------------
 -- 5) Startup confirmation
 ------------------------------------------------
-nk.logger_info("✅ main.lua loaded successfully (project-safe)")
+nk.logger_info("✅ main.lua loaded successfully (stable)")
