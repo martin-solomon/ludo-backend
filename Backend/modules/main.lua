@@ -1,13 +1,12 @@
 -- main.lua
--- Central loader for Nakama Lua modules. Uses safe_require so a broken module
--- doesn't stop the whole runtime from starting.
+-- Central loader for Nakama Lua modules.
+-- Designed to be crash-safe, order-correct, and production-ready.
 
 local nk = require("nakama")
 
--- 0) Optional helpers (non-fatal)
-pcall(function() require("main_helpers") end)
-
--- Helper: safely require a module and log any error without crashing startup.
+-------------------------------------------------------------
+-- Helper: safely require a module without crashing runtime
+-------------------------------------------------------------
 local function safe_require(name)
   local ok, result = pcall(require, name)
   if not ok then
@@ -18,15 +17,18 @@ local function safe_require(name)
   return result, nil
 end
 
-----------------------------------------------------------------
--- 1) Low-level helpers
-----------------------------------------------------------------
-safe_require("utils_rpc")
+-------------------------------------------------------------
+-- 0) Optional helpers (MUST NOT TOUCH nk)
+-------------------------------------------------------------
+pcall(function()
+  require("main_helpers")
+end)
 
-----------------------------------------------------------------
--- 2) Core account / profile RPCs
-----------------------------------------------------------------
-local rpc_first = {
+-------------------------------------------------------------
+-- 1) Core account / profile RPCs
+-- These modules SELF-REGISTER their RPCs internally
+-------------------------------------------------------------
+local rpc_core = {
   "create_guest_profile",
   "create_user",
   "convert_guest_to_permanent",
@@ -34,29 +36,31 @@ local rpc_first = {
   "guest_cleanup"
 }
 
-for _, m in ipairs(rpc_first) do
+for _, m in ipairs(rpc_core) do
   safe_require(m)
 end
 
-----------------------------------------------------------------
--- 3) Authoritative Match Registration (CRITICAL)
-----------------------------------------------------------------
+-------------------------------------------------------------
+-- 2) Authoritative Match Registration (CRITICAL ORDER)
+-- This MUST happen before utils/helpers
+-------------------------------------------------------------
 local ludo_match, match_err = safe_require("ludo_match")
 if ludo_match then
   nk.match_register("ludo_match", ludo_match)
   nk.logger_info("main.lua: ludo_match registered successfully")
 else
-  nk.logger_warn("main.lua: ludo_match NOT registered: " .. tostring(match_err))
+  nk.logger_error("main.lua: ludo_match NOT registered: " .. tostring(match_err))
 end
 
-----------------------------------------------------------------
--- 4) Match-related & gameplay RPCs
-----------------------------------------------------------------
--- These depend on match existing
+-------------------------------------------------------------
+-- 3) Match & profile related RPCs (self-registering)
+-------------------------------------------------------------
 safe_require("rpc_create_match")
 safe_require("rpc_get_profile")
 
--- Existing late RPCs
+-------------------------------------------------------------
+-- 4) Late RPCs that depend on match / core logic
+-------------------------------------------------------------
 local rpc_late = {
   "rpc_quick_join",
   "rpc_player_list",
@@ -67,7 +71,13 @@ for _, m in ipairs(rpc_late) do
   safe_require(m)
 end
 
-----------------------------------------------------------------
--- 5) Final startup log
-----------------------------------------------------------------
-nk.logger_info("✅ main.lua loaded: matches + RPCs registered safely")
+-------------------------------------------------------------
+-- 5) Utility helpers (LOAD LAST)
+-- utils_rpc MUST NOT overwrite nk
+-------------------------------------------------------------
+safe_require("utils_rpc")
+
+-------------------------------------------------------------
+-- 6) Final startup confirmation
+-------------------------------------------------------------
+nk.logger_info("✅ main.lua loaded successfully — runtime stable")
