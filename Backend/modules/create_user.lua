@@ -38,7 +38,7 @@ local function create_user_rpc(context, payload)
     guest = false,
 
     -- ✅ ADDED FIELDS
-    coins = 100,
+    coins = 1000,
     xp = 0,
     level = 1,
 
@@ -92,3 +92,4 @@ local function create_user_rpc(context, payload)
 end
 
 nk.register_rpc(create_user_rpc, "create_user")
+
