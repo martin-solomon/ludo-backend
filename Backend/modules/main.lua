@@ -1,6 +1,6 @@
 -- main.lua
 -- Central loader for Nakama Lua modules.
--- SAFE version based on last known working runtime.
+-- SAFE version with explicit match registration (required for Lua)
 
 local nk = require("nakama")
 
@@ -25,7 +25,7 @@ local function safe_require(name)
 end
 
 ------------------------------------------------
--- 1) Core helpers (KEEP — already working)
+-- 1) Core helpers
 ------------------------------------------------
 safe_require("utils_rpc")
 
@@ -39,10 +39,15 @@ safe_require("admin_delete_account")
 safe_require("guest_cleanup")
 
 ------------------------------------------------
--- 3) Match logic (AUTO-REGISTERED BY NAKAMA)
--- IMPORTANT: DO NOT call nk.match_register
+-- 3) Match logic (EXPLICIT REGISTRATION REQUIRED)
 ------------------------------------------------
-safe_require("ludo_match")
+local ludo_match = safe_require("ludo_match")
+if ludo_match then
+  nk.match_register("ludo_match", ludo_match)
+  nk.logger_info("✅ Match handler 'ludo_match' registered")
+else
+  nk.logger_error("❌ ludo_match failed to load — match creation will fail")
+end
 
 ------------------------------------------------
 -- 4) Match-related RPCs
