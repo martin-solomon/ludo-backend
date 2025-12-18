@@ -2,8 +2,8 @@
 local nk = require("nakama")
 
 -- Core server-side modules
-local apply_rewards = require("apply_match_rewards")     -- rewards, level, coins
-local update_daily_tasks = require("update_daily_tasks") -- daily task tracking
+local apply_rewards = require("apply_match_rewards")
+local update_daily_tasks = require("update_daily_tasks")
 
 local M = {}
 
@@ -25,6 +25,11 @@ function M.match_init(context, params)
 
   local tick_rate = 1
   return state, tick_rate
+end
+
+-- ✅ ONLY ADDITION (NOT MODIFYING ANY LOGIC)
+function M.match_join_attempt(context, dispatcher, tick, state, presence, metadata)
+  return state, true
 end
 
 function M.match_join(context, dispatcher, tick, state, presences)
@@ -64,13 +69,11 @@ function M.match_loop(context, dispatcher, tick, state, messages)
     local user_id = message.sender.user_id
     local data = nk.json_decode(message.data)
 
-    -- Enforce turn order
     if user_id ~= state.current_turn then
       nk.logger_warn("Invalid turn attempt by " .. user_id)
       return state
     end
 
-    -- Dice roll request
     if data.action == "roll_dice" then
       local dice = math.random(1, 6)
       state.dice_value = dice
@@ -81,7 +84,6 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         value = dice
       }))
 
-      -- TEMP WIN CONDITION (FOR TESTING)
       if dice == 6 then
         state.game_over = true
         state.winner = user_id
@@ -92,10 +94,7 @@ function M.match_loop(context, dispatcher, tick, state, messages)
           result = "win"
         }
 
-        -- ✅ Apply rewards (coins, xp, level, wins)
         apply_rewards(user_id, rewards)
-
-        -- ✅ Update daily tasks (play match + win)
         update_daily_tasks(user_id, "win")
 
         dispatcher.broadcast_message(1, nk.json_encode({
@@ -108,7 +107,6 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         return state
       end
 
-      -- Move to next turn
       local idx = 1
       for i, uid in ipairs(state.turn_order) do
         if uid == user_id then
