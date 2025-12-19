@@ -5,24 +5,26 @@ on: [push]
 jobs:
   Upload-Files:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: 🚚 Get latest code
-        uses: actions/checkout@v3
-
-      - name: 📂 SFTP uploader
-        uses: wangyucode/sftp-upload-action@v2.0.4
+        uses: actions/checkout@v4
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          privateKey: ${{ secrets.SSH_PRIVATE_KEY }}
-          remoteDir: "/home/ec2-user/newcol/modules"
-          localDir: "./Backend/modules"
-      - name: Run remote command via SSH
-        uses: appleboy/ssh-action@v1.0.3 # Or another SSH command runner action
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+          aws-region: ap-southeast-1
+      - name: Execute deployment script on EC2 via SSM
+        uses: peterkimzz/aws-ssm-send-command@v1.2.1
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd /home/ec2-user/newcol
+          instance-ids: ${{ secrets.INSTANCE_ID }}
+          command: |
+            sudo su - ec2-user
+            cd /home/ec2-user/repo/
+            git pull origin main
+            \cp -r Backend/modules/* /home/ec2-user/newcol/modules/
+            cd /home/ec2-user/newcol/
             docker-compose restart
+      
