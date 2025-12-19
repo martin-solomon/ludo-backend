@@ -27,8 +27,11 @@ function M.match_init(context, params)
   }
 
   local tick_rate = 1
-  return state, tick_rate
+
+  -- ✅ ADD THIS LABEL STRING (VERY IMPORTANT)
+  return state, tick_rate, "ludo_match"
 end
+
 
 ------------------------------------------------
 -- REQUIRED: match_join_attempt (MISSING EARLIER)
@@ -158,3 +161,4 @@ function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
 end
 
 return M
+
