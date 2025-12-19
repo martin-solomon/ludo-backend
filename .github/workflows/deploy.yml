@@ -25,10 +25,4 @@ jobs:
           parameters: '{"commands":["sudo -u ec2-user sh /usr/src/dp.sh"]}'
           wait-until-command-executed: true
           max-wait-time: 600
-      - name: Execute deployment script on EC2 via SSM
-        uses: peterkimzz/aws-ssm-send-command@master
-        with:
-          instance-ids: ${{ secrets.INSTANCE_ID }}
-          command: |
-            
       
