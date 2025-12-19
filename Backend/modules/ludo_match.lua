@@ -7,6 +7,9 @@ local update_daily_tasks = require("update_daily_tasks")
 
 local M = {}
 
+------------------------------------------------
+-- REQUIRED: match_init
+------------------------------------------------
 function M.match_init(context, params)
   local state = {
     players = {},
@@ -27,11 +30,17 @@ function M.match_init(context, params)
   return state, tick_rate
 end
 
--- ✅ ONLY ADDITION (NOT MODIFYING ANY LOGIC)
+------------------------------------------------
+-- REQUIRED: match_join_attempt (MISSING EARLIER)
+------------------------------------------------
 function M.match_join_attempt(context, dispatcher, tick, state, presence, metadata)
+  -- Allow all players to join
   return state, true
 end
 
+------------------------------------------------
+-- REQUIRED: match_join
+------------------------------------------------
 function M.match_join(context, dispatcher, tick, state, presences)
   for _, p in ipairs(presences) do
     state.players[p.user_id] = p
@@ -52,6 +61,9 @@ function M.match_join(context, dispatcher, tick, state, presences)
   return state
 end
 
+------------------------------------------------
+-- REQUIRED: match_leave
+------------------------------------------------
 function M.match_leave(context, dispatcher, tick, state, presences)
   for _, p in ipairs(presences) do
     state.players[p.user_id] = nil
@@ -60,6 +72,9 @@ function M.match_leave(context, dispatcher, tick, state, presences)
   return state
 end
 
+------------------------------------------------
+-- REQUIRED: match_loop
+------------------------------------------------
 function M.match_loop(context, dispatcher, tick, state, messages)
   if state.game_over then
     return state
@@ -127,6 +142,17 @@ function M.match_loop(context, dispatcher, tick, state, messages)
   return state
 end
 
+------------------------------------------------
+-- REQUIRED: match_signal (MISSING EARLIER)
+------------------------------------------------
+function M.match_signal(context, dispatcher, tick, state, data)
+  -- Not used right now
+  return state
+end
+
+------------------------------------------------
+-- REQUIRED: match_terminate
+------------------------------------------------
 function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
   return state
 end
