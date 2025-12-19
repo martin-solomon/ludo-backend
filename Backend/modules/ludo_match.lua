@@ -46,9 +46,25 @@ end
 ------------------------------------------------
 function M.match_join(context, dispatcher, tick, state, presences)
   for _, p in ipairs(presences) do
-    state.players[p.user_id] = p
-    table.insert(state.turn_order, p.user_id)
-    nk.logger_info("Player joined: " .. p.user_id)
+    state.players[p.user_id] = {
+      user_id = p.user_id,
+      username = p.username,
+      session_id = p.session_id
+    }
+
+    -- Prevent duplicate turn entries
+    local exists = false
+    for _, uid in ipairs(state.turn_order) do
+      if uid == p.user_id then
+        exists = true
+        break
+      end
+    end
+    if not exists then
+      table.insert(state.turn_order, p.user_id)
+    end
+
+    nk.logger_info("Player joined state: " .. p.user_id)
   end
 
   if #state.turn_order >= 2 and not state.game_started then
@@ -63,6 +79,7 @@ function M.match_join(context, dispatcher, tick, state, presences)
 
   return state
 end
+
 
 ------------------------------------------------
 -- REQUIRED: match_leave
@@ -161,4 +178,5 @@ function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
 end
 
 return M
+
 
