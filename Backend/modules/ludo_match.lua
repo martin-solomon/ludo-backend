@@ -15,12 +15,12 @@ function M.match_init(context, params)
     turn_order = {},
     current_turn = nil,
     dice_value = nil,
+
     game_started = false,
     game_over = false,
+
     winner = nil,
-    rewards = nil,
-    created_at = os.time(),
-    _signals = {} -- ✅ IMPORTANT
+    created_at = os.time()
   }
 
   return state, 1, "ludo_match"
@@ -45,7 +45,10 @@ function M.match_join(context, dispatcher, tick, state, presences)
 
     local exists = false
     for _, uid in ipairs(state.turn_order) do
-      if uid == p.user_id then exists = true end
+      if uid == p.user_id then
+        exists = true
+        break
+      end
     end
 
     if not exists then
@@ -67,32 +70,25 @@ function M.match_join(context, dispatcher, tick, state, presences)
 end
 
 ------------------------------------------------
--- match_loop
+-- match_loop (AUTHORITATIVE CORE)
 ------------------------------------------------
 function M.match_loop(context, dispatcher, tick, state, messages)
-  if state.game_over then return state end
-
-  -- 🔁 Convert signals into messages
-  for _, signal in ipairs(state._signals) do
-    table.insert(messages, {
-      sender = { user_id = signal.user_id },
-      data = nk.json_encode({ action = signal.action }),
-      op_code = 1
-    })
+  if state.game_over then
+    return state
   end
-  state._signals = {}
 
   for _, message in ipairs(messages) do
     local user_id = message.sender.user_id
     local data = nk.json_decode(message.data)
 
-    -- 🛡️ TURN ENFORCEMENT
+    -- 🛡️ TURN ENFORCEMENT (ANTI-CHEAT)
     if user_id ~= state.current_turn then
-      nk.logger_warn("Cheat attempt by " .. user_id)
+      nk.logger_warn("Invalid turn attempt by " .. user_id)
       return state
     end
 
     if data.action == "roll_dice" then
+      -- 🎲 SERVER-AUTHORITATIVE DICE
       local dice = math.random(1, 6)
       state.dice_value = dice
 
@@ -107,7 +103,10 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         state.game_over = true
         state.winner = user_id
 
-        local rewards = { coins = 100, xp = 50 }
+        local rewards = {
+          coins = 100,
+          xp = 50
+        }
 
         apply_rewards(user_id, rewards)
         update_daily_tasks(user_id, "win")
@@ -121,12 +120,13 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         return state
       end
 
-      -- NEXT TURN
-      local idx = 1
+      -- 🔁 NEXT TURN
       for i, uid in ipairs(state.turn_order) do
-        if uid == user_id then idx = i end
+        if uid == user_id then
+          state.current_turn = state.turn_order[(i % #state.turn_order) + 1]
+          break
+        end
       end
-      state.current_turn = state.turn_order[(idx % #state.turn_order) + 1]
 
       dispatcher.broadcast_message(1, nk.json_encode({
         type = "next_turn",
@@ -135,15 +135,6 @@ function M.match_loop(context, dispatcher, tick, state, messages)
     end
   end
 
-  return state
-end
-
-------------------------------------------------
--- match_signal
-------------------------------------------------
-function M.match_signal(context, dispatcher, tick, state, data)
-  local signal = nk.json_decode(data)
-  table.insert(state._signals, signal)
   return state
 end
 
