@@ -14,18 +14,20 @@ local function rpc_match_action(context, payload)
   end
 
   -- ✅ SEND SIGNAL INTO MATCH (CORRECT API)
-  nk.match_send(
+nk.match_send(
   match_id,
-  1,
+  1, -- opcode
   nk.json_encode({
-    user_id = context.user_id,
     action = action
-  })
+  }),
+  context.user_id
 )
+
 
 
   return nk.json_encode({ status = "sent" })
 end
 
 nk.register_rpc(rpc_match_action, "match.action")
+
 
