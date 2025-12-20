@@ -146,3 +146,15 @@ function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
 end
 
 return M
+------------------------------------------------
+-- match_leave (MANDATORY)
+------------------------------------------------
+function M.match_leave(context, dispatcher, tick, state, presences)
+  for _, p in ipairs(presences) do
+    state.players[p.user_id] = nil
+    nk.logger_info("Player left match: " .. p.user_id)
+  end
+  return state
+end
+
+
