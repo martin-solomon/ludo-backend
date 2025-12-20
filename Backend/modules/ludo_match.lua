@@ -161,6 +161,35 @@ function M.match_loop(context, dispatcher, tick, state, messages)
 
   return state
 end
+if message.op_code == 1 then
+  local data = nk.json_decode(message.data)
+
+  if data.action == "roll_dice" then
+
+    -- TURN ENFORCEMENT (ANTI CHEAT)
+    local expected_user = state.turn_order[state.current_turn]
+    if message.sender.user_id ~= expected_user then
+      return state -- ignore cheat attempt
+    end
+
+    -- ROLL DICE (SERVER ONLY)
+    local dice = math.random(1, 6)
+    state.dice_value = dice
+
+    -- BROADCAST RESULT
+    dispatcher.broadcast_message(2, nk.json_encode({
+      type = "dice_rolled",
+      user_id = message.sender.user_id,
+      dice = dice
+    }))
+
+    -- MOVE TURN
+    state.current_turn = state.current_turn + 1
+    if state.current_turn > #state.turn_order then
+      state.current_turn = 1
+    end
+  end
+end
 
 ------------------------------------------------
 -- REQUIRED: match_signal (MISSING EARLIER)
@@ -178,5 +207,6 @@ function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
 end
 
 return M
+
 
 
