@@ -28,16 +28,14 @@ function M.match_init(context, params)
 
   local tick_rate = 1
 
-  -- ✅ ADD THIS LABEL STRING (VERY IMPORTANT)
+  -- IMPORTANT: label string
   return state, tick_rate, "ludo_match"
 end
 
-
 ------------------------------------------------
--- REQUIRED: match_join_attempt (MISSING EARLIER)
+-- REQUIRED: match_join_attempt
 ------------------------------------------------
 function M.match_join_attempt(context, dispatcher, tick, state, presence, metadata)
-  -- Allow all players to join
   return state, true
 end
 
@@ -60,11 +58,12 @@ function M.match_join(context, dispatcher, tick, state, presences)
         break
       end
     end
+
     if not exists then
       table.insert(state.turn_order, p.user_id)
     end
 
-    nk.logger_info("Player joined state: " .. p.user_id)
+    nk.logger_info("Player joined: " .. p.user_id)
   end
 
   if #state.turn_order >= 2 and not state.game_started then
@@ -79,7 +78,6 @@ function M.match_join(context, dispatcher, tick, state, presences)
 
   return state
 end
-
 
 ------------------------------------------------
 -- REQUIRED: match_leave
@@ -104,12 +102,14 @@ function M.match_loop(context, dispatcher, tick, state, messages)
     local user_id = message.sender.user_id
     local data = nk.json_decode(message.data)
 
+    -- TURN ENFORCEMENT (ANTI-CHEAT)
     if user_id ~= state.current_turn then
       nk.logger_warn("Invalid turn attempt by " .. user_id)
       return state
     end
 
     if data.action == "roll_dice" then
+      -- SERVER-AUTHORITATIVE DICE
       local dice = math.random(1, 6)
       state.dice_value = dice
 
@@ -119,6 +119,7 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         value = dice
       }))
 
+      -- WIN CONDITION
       if dice == 6 then
         state.game_over = true
         state.winner = user_id
@@ -142,6 +143,7 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         return state
       end
 
+      -- NEXT TURN
       local idx = 1
       for i, uid in ipairs(state.turn_order) do
         if uid == user_id then
@@ -161,41 +163,11 @@ function M.match_loop(context, dispatcher, tick, state, messages)
 
   return state
 end
-if message.op_code == 1 then
-  local data = nk.json_decode(message.data)
-
-  if data.action == "roll_dice" then
-
-    -- TURN ENFORCEMENT (ANTI CHEAT)
-    local expected_user = state.turn_order[state.current_turn]
-    if message.sender.user_id ~= expected_user then
-      return state -- ignore cheat attempt
-    end
-
-    -- ROLL DICE (SERVER ONLY)
-    local dice = math.random(1, 6)
-    state.dice_value = dice
-
-    -- BROADCAST RESULT
-    dispatcher.broadcast_message(2, nk.json_encode({
-      type = "dice_rolled",
-      user_id = message.sender.user_id,
-      dice = dice
-    }))
-
-    -- MOVE TURN
-    state.current_turn = state.current_turn + 1
-    if state.current_turn > #state.turn_order then
-      state.current_turn = 1
-    end
-  end
-end
 
 ------------------------------------------------
--- REQUIRED: match_signal (MISSING EARLIER)
+-- REQUIRED: match_signal
 ------------------------------------------------
 function M.match_signal(context, dispatcher, tick, state, data)
-  -- Not used right now
   return state
 end
 
@@ -207,6 +179,3 @@ function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
 end
 
 return M
-
-
-
