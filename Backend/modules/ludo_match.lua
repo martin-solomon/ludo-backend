@@ -70,6 +70,17 @@ function M.match_join(context, dispatcher, tick, state, presences)
 end
 
 ------------------------------------------------
+-- match_leave (MANDATORY)
+------------------------------------------------
+function M.match_leave(context, dispatcher, tick, state, presences)
+  for _, p in ipairs(presences) do
+    state.players[p.user_id] = nil
+    nk.logger_info("Player left match: " .. p.user_id)
+  end
+  return state
+end
+
+------------------------------------------------
 -- match_loop (AUTHORITATIVE CORE)
 ------------------------------------------------
 function M.match_loop(context, dispatcher, tick, state, messages)
@@ -81,14 +92,13 @@ function M.match_loop(context, dispatcher, tick, state, messages)
     local user_id = message.sender.user_id
     local data = nk.json_decode(message.data)
 
-    -- 🛡️ TURN ENFORCEMENT (ANTI-CHEAT)
+    -- TURN ENFORCEMENT (ANTI-CHEAT)
     if user_id ~= state.current_turn then
       nk.logger_warn("Invalid turn attempt by " .. user_id)
       return state
     end
 
     if data.action == "roll_dice" then
-      -- 🎲 SERVER-AUTHORITATIVE DICE
       local dice = math.random(1, 6)
       state.dice_value = dice
 
@@ -98,16 +108,12 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         value = dice
       }))
 
-      -- 🏆 WIN CONDITION
+      -- WIN CONDITION
       if dice == 6 then
         state.game_over = true
         state.winner = user_id
 
-        local rewards = {
-          coins = 100,
-          xp = 50
-        }
-
+        local rewards = { coins = 100, xp = 50 }
         apply_rewards(user_id, rewards)
         update_daily_tasks(user_id, "win")
 
@@ -120,7 +126,7 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         return state
       end
 
-      -- 🔁 NEXT TURN
+      -- NEXT TURN
       for i, uid in ipairs(state.turn_order) do
         if uid == user_id then
           state.current_turn = state.turn_order[(i % #state.turn_order) + 1]
@@ -139,6 +145,19 @@ function M.match_loop(context, dispatcher, tick, state, messages)
 end
 
 ------------------------------------------------
+-- match_signal (REQUIRED FOR RPC)
+------------------------------------------------
+function M.match_signal(context, dispatcher, tick, state, data)
+  local signal = nk.json_decode(data)
+
+  table.insert(state.turn_order, state.current_turn) -- noop safety
+  table.insert(state.players, state.players) -- noop safety
+
+  table.insert(state._signals or {}, signal)
+  return state
+end
+
+------------------------------------------------
 -- match_terminate
 ------------------------------------------------
 function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
@@ -146,15 +165,3 @@ function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
 end
 
 return M
-------------------------------------------------
--- match_leave (MANDATORY)
-------------------------------------------------
-function M.match_leave(context, dispatcher, tick, state, presences)
-  for _, p in ipairs(presences) do
-    state.players[p.user_id] = nil
-    nk.logger_info("Player left match: " .. p.user_id)
-  end
-  return state
-end
-
-
