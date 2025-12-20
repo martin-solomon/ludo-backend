@@ -1,14 +1,13 @@
 -- ludo_match.lua
 local nk = require("nakama")
 
--- Core server-side modules
 local apply_rewards = require("apply_match_rewards")
 local update_daily_tasks = require("update_daily_tasks")
 
 local M = {}
 
 ------------------------------------------------
--- REQUIRED: match_init
+-- match_init
 ------------------------------------------------
 function M.match_init(context, params)
   local state = {
@@ -23,24 +22,22 @@ function M.match_init(context, params)
     winner = nil,
     rewards = nil,
 
+    _signals = {}, -- ✅ IMPORTANT
     created_at = os.time()
   }
 
-  local tick_rate = 1
-
-  -- IMPORTANT: label string
-  return state, tick_rate, "ludo_match"
+  return state, 1, "ludo_match"
 end
 
 ------------------------------------------------
--- REQUIRED: match_join_attempt
+-- match_join_attempt
 ------------------------------------------------
 function M.match_join_attempt(context, dispatcher, tick, state, presence, metadata)
   return state, true
 end
 
 ------------------------------------------------
--- REQUIRED: match_join
+-- match_join
 ------------------------------------------------
 function M.match_join(context, dispatcher, tick, state, presences)
   for _, p in ipairs(presences) do
@@ -50,7 +47,6 @@ function M.match_join(context, dispatcher, tick, state, presences)
       session_id = p.session_id
     }
 
-    -- Prevent duplicate turn entries
     local exists = false
     for _, uid in ipairs(state.turn_order) do
       if uid == p.user_id then
@@ -62,8 +58,6 @@ function M.match_join(context, dispatcher, tick, state, presences)
     if not exists then
       table.insert(state.turn_order, p.user_id)
     end
-
-    nk.logger_info("Player joined: " .. p.user_id)
   end
 
   if #state.turn_order >= 2 and not state.game_started then
@@ -80,36 +74,44 @@ function M.match_join(context, dispatcher, tick, state, presences)
 end
 
 ------------------------------------------------
--- REQUIRED: match_leave
+-- match_leave
 ------------------------------------------------
 function M.match_leave(context, dispatcher, tick, state, presences)
   for _, p in ipairs(presences) do
     state.players[p.user_id] = nil
-    nk.logger_info("Player left: " .. p.user_id)
   end
   return state
 end
 
 ------------------------------------------------
--- REQUIRED: match_loop
+-- match_loop
 ------------------------------------------------
 function M.match_loop(context, dispatcher, tick, state, messages)
   if state.game_over then
     return state
   end
 
+  -- ✅ Inject RPC signals as messages
+  for _, signal in ipairs(state._signals) do
+    table.insert(messages, {
+      sender = { user_id = signal.user_id },
+      data = nk.json_encode({ action = signal.action }),
+      op_code = 1
+    })
+  end
+  state._signals = {}
+
   for _, message in ipairs(messages) do
     local user_id = message.sender.user_id
     local data = nk.json_decode(message.data)
 
-    -- TURN ENFORCEMENT (ANTI-CHEAT)
+    -- TURN ENFORCEMENT
     if user_id ~= state.current_turn then
       nk.logger_warn("Invalid turn attempt by " .. user_id)
       return state
     end
 
     if data.action == "roll_dice" then
-      -- SERVER-AUTHORITATIVE DICE
       local dice = math.random(1, 6)
       state.dice_value = dice
 
@@ -124,12 +126,7 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         state.game_over = true
         state.winner = user_id
 
-        local rewards = {
-          coins = 100,
-          xp = 50,
-          result = "win"
-        }
-
+        local rewards = { coins = 100, xp = 50 }
         apply_rewards(user_id, rewards)
         update_daily_tasks(user_id, "win")
 
@@ -139,20 +136,16 @@ function M.match_loop(context, dispatcher, tick, state, messages)
           rewards = rewards
         }))
 
-        nk.logger_info("Match ended. Winner: " .. user_id)
         return state
       end
 
       -- NEXT TURN
-      local idx = 1
       for i, uid in ipairs(state.turn_order) do
         if uid == user_id then
-          idx = i
+          state.current_turn = state.turn_order[(i % #state.turn_order) + 1]
           break
         end
       end
-
-      state.current_turn = state.turn_order[(idx % #state.turn_order) + 1]
 
       dispatcher.broadcast_message(1, nk.json_encode({
         type = "next_turn",
@@ -165,14 +158,16 @@ function M.match_loop(context, dispatcher, tick, state, messages)
 end
 
 ------------------------------------------------
--- REQUIRED: match_signal
+-- match_signal
 ------------------------------------------------
 function M.match_signal(context, dispatcher, tick, state, data)
+  local signal = nk.json_decode(data)
+  table.insert(state._signals, signal)
   return state
 end
 
 ------------------------------------------------
--- REQUIRED: match_terminate
+-- match_terminate
 ------------------------------------------------
 function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
   return state
