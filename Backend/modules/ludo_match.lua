@@ -1,4 +1,4 @@
--- ludo_match.lua
+-- ludo_match.lua (PRODUCTION)
 local nk = require("nakama")
 
 local apply_rewards = require("apply_match_rewards")
@@ -18,9 +18,10 @@ function M.match_init(context, params)
 
     game_started = false,
     game_over = false,
-
     winner = nil,
-    created_at = os.time()
+
+    created_at = os.time(),
+    _signals = {} -- used ONLY by match_signal
   }
 
   return state, 1, "ludo_match"
@@ -38,20 +39,11 @@ end
 ------------------------------------------------
 function M.match_join(context, dispatcher, tick, state, presences)
   for _, p in ipairs(presences) do
-    state.players[p.user_id] = {
-      user_id = p.user_id,
-      username = p.username
-    }
-
-    local exists = false
-    for _, uid in ipairs(state.turn_order) do
-      if uid == p.user_id then
-        exists = true
-        break
-      end
-    end
-
-    if not exists then
+    if not state.players[p.user_id] then
+      state.players[p.user_id] = {
+        user_id = p.user_id,
+        username = p.username
+      }
       table.insert(state.turn_order, p.user_id)
     end
   end
@@ -70,13 +62,21 @@ function M.match_join(context, dispatcher, tick, state, presences)
 end
 
 ------------------------------------------------
--- match_leave (MANDATORY)
+-- match_leave
 ------------------------------------------------
 function M.match_leave(context, dispatcher, tick, state, presences)
   for _, p in ipairs(presences) do
     state.players[p.user_id] = nil
-    nk.logger_info("Player left match: " .. p.user_id)
   end
+  return state
+end
+
+------------------------------------------------
+-- match_signal (ENTRY POINT FROM RPC)
+------------------------------------------------
+function M.match_signal(context, dispatcher, tick, state, data)
+  local signal = nk.json_decode(data)
+  table.insert(state._signals, signal)
   return state
 end
 
@@ -84,17 +84,24 @@ end
 -- match_loop (AUTHORITATIVE CORE)
 ------------------------------------------------
 function M.match_loop(context, dispatcher, tick, state, messages)
-  if state.game_over then
-    return state
+  if state.game_over then return state end
+
+  -- convert signals → messages
+  for _, signal in ipairs(state._signals) do
+    table.insert(messages, {
+      sender = { user_id = signal.user_id },
+      data = nk.json_encode({ action = signal.action }),
+      op_code = 1
+    })
   end
+  state._signals = {}
 
   for _, message in ipairs(messages) do
     local user_id = message.sender.user_id
     local data = nk.json_decode(message.data)
 
-    -- TURN ENFORCEMENT (ANTI-CHEAT)
+    -- 🔒 TURN ENFORCEMENT
     if user_id ~= state.current_turn then
-      nk.logger_warn("Invalid turn attempt by " .. user_id)
       return state
     end
 
@@ -108,7 +115,7 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         value = dice
       }))
 
-      -- WIN CONDITION
+      -- 🏆 WIN CONDITION
       if dice == 6 then
         state.game_over = true
         state.winner = user_id
@@ -141,19 +148,6 @@ function M.match_loop(context, dispatcher, tick, state, messages)
     end
   end
 
-  return state
-end
-
-------------------------------------------------
--- match_signal (REQUIRED FOR RPC)
-------------------------------------------------
-function M.match_signal(context, dispatcher, tick, state, data)
-  local signal = nk.json_decode(data)
-
-  table.insert(state.turn_order, state.current_turn) -- noop safety
-  table.insert(state.players, state.players) -- noop safety
-
-  table.insert(state._signals or {}, signal)
   return state
 end
 
