@@ -1,51 +1,65 @@
 local nk = require("nakama")
 
-local M = {}
+local function validate_credentials(context, payload)
+    if not context or not context.user_id then
+        return nk.json_encode({
+            ok = false,
+            error = "unauthorized"
+        })
+    end
 
--- EMAIL VALIDATION
-local function is_valid_email(email)
-    if type(email) ~= "string" then return false end
-    email = email:lower()
-    return email:match("^[%w%.%-_]+@gmail%.com$") ~= nil
-end
-
--- PASSWORD VALIDATION
-local function is_valid_password(password)
-    if type(password) ~= "string" then return false end
-    if #password < 8 then return false end
-
-    local has_upper = password:match("%u")
-    local has_lower = password:match("%l")
-    local has_digit = password:match("%d")
-    local has_special = password:match("[%W_]")
-
-    return has_upper and has_lower and has_digit and has_special
-end
-
--- RPC HANDLER
-local function validate_credentials_rpc(context, payload)
     local data = nk.json_decode(payload or "{}")
+    local email = data.email or ""
+    local password = data.password or ""
 
-    local email = data.email
-    local password = data.password
-
-    if not is_valid_email(email) then
+    -- Email rule: must end with @gmail.com
+    if not email:match("^[%w%.%-_]+@gmail%.com$") then
         return nk.json_encode({
-            valid = false,
-            error = "Email must end with @gmail.com"
-        }), 400
+            ok = false,
+            error = "Invalid email format. Must end with @gmail.com"
+        })
     end
 
-    if not is_valid_password(password) then
+    -- Password rules
+    if #password < 8 then
         return nk.json_encode({
-            valid = false,
-            error = "Password must contain uppercase, lowercase, number, special character, and be at least 8 characters"
-        }), 400
+            ok = false,
+            error = "Password must be at least 8 characters"
+        })
     end
 
-    return nk.json_encode({ valid = true }), 200
+    if not password:match("%l") then
+        return nk.json_encode({
+            ok = false,
+            error = "Password must contain a lowercase letter"
+        })
+    end
+
+    if not password:match("%u") then
+        return nk.json_encode({
+            ok = false,
+            error = "Password must contain an uppercase letter"
+        })
+    end
+
+    if not password:match("%d") then
+        return nk.json_encode({
+            ok = false,
+            error = "Password must contain a number"
+        })
+    end
+
+    if not password:match("[%W_]") then
+        return nk.json_encode({
+            ok = false,
+            error = "Password must contain a special character"
+        })
+    end
+
+    -- All rules passed
+    return nk.json_encode({
+        ok = true
+    })
 end
 
-nk.register_rpc(validate_credentials_rpc, "validate.credentials")
-
-return M
+nk.register_rpc(validate_credentials, "validate.credentials")
