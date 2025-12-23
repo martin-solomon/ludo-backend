@@ -18,8 +18,10 @@ function M.match_init(context, params)
 
     game_started = false,
     game_over = false,
-    winner = nil,
 
+    match_finished = false, -- ✅ PHASE B ADDITION
+
+    winner = nil,
     created_at = os.time(),
     _signals = {} -- used ONLY by match_signal
   }
@@ -115,8 +117,15 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         value = dice
       }))
 
-      -- 🏆 WIN CONDITION
+      -- 🏆 WIN CONDITION (PHASE B HARDENED)
       if dice == 6 then
+
+        -- ✅ PHASE B GUARD (CRITICAL)
+        if state.match_finished then
+          return state
+        end
+
+        state.match_finished = true
         state.game_over = true
         state.winner = user_id
 
