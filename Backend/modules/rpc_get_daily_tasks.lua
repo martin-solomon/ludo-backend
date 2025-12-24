@@ -1,15 +1,17 @@
 local nk = require("nakama")
 
-local M = {}
+local function get_daily_tasks(context, payload)
+  if not context.user_id then
+    return nk.json_encode({ error = "unauthorized" })
+  end
 
-function M.update(user_id, event)
   local today = os.date("%Y-%m-%d")
 
   local objects = nk.storage_read({
     {
-      collection = "daily_tasks",
-      key = "today",
-      user_id = user_id
+      collection = "tasks",   -- MUST MATCH update_daily_tasks.lua
+      key = "daily",
+      user_id = context.user_id
     }
   })
 
@@ -26,33 +28,16 @@ function M.update(user_id, event)
   }
 
   if objects and #objects > 0 then
-    if objects[1].value.date == today then
-      tasks = objects[1].value
+    local stored = objects[1].value
+
+    -- reset if date changed
+    if stored.date == today then
+      tasks = stored
     end
   end
 
-  if event == "play" then
-    tasks.play_matches = tasks.play_matches + 1
-  elseif event == "win" then
-    tasks.win_matches = tasks.win_matches + 1
-  elseif event == "roll_dice" then
-    tasks.dice_rolls = tasks.dice_rolls + 1
-  end
-
-  if tasks.play_matches >= 5 then tasks.completed.play = true end
-  if tasks.win_matches >= 1 then tasks.completed.win = true end
-  if tasks.dice_rolls >= 5 then tasks.completed.dice = true end
-
-  nk.storage_write({
-    {
-      collection = "daily_tasks",
-      key = "today",
-      user_id = user_id,
-      value = tasks,
-      permission_read = 1,
-      permission_write = 0
-    }
-  })
+  -- ⚠️ IMPORTANT: RETURN ONLY ONE VALUE
+  return nk.json_encode(tasks)
 end
 
-return M
+nk.register_rpc(get_daily_tasks, "daily.tasks.get")
