@@ -1,88 +1,59 @@
 -- apply_match_rewards.lua
 local nk = require("nakama")
 
-local function apply_match_rewards_rpc(context, payload)
-  -- Only server / match code should call this
-  if not context.user_id then
-    return nk.json_encode({ error = "unauthorized" }), 401
-  end
-
-  local input = nk.json_decode(payload or "{}")
-  local target_user_id = input.user_id
-  local reward_coins = input.coins or 0
-  local reward_xp = input.xp or 0
-
-  if not target_user_id then
-    return nk.json_encode({ error = "missing_user_id" }), 400
-  end
-
-  -- Read existing profile
-  local objects = {
+-- =====================================================
+-- PHASE C ADDITION: REWARD DUPLICATE PREVENTION (NEW)
+-- =====================================================
+local function reward_already_given(user_id, match_id)
+  local result = nk.storage_read({
     {
-      collection = "profile",
-      key = "player",
-      user_id = target_user_id
+      collection = "match_rewards",
+      key = match_id,
+      user_id = user_id
     }
-  }
+  })
 
-  local result = nk.storage_read(objects)
-  if not result or #result == 0 then
-    return nk.json_encode({ error = "profile_not_found" }), 404
-  end
+  return result and #result > 0
+end
 
-  local profile = result[1].value
-
-  -- Default safety
-  profile.coins = profile.coins or 0
-  profile.xp = profile.xp or 0
-  profile.level = profile.level or 1
-
-  -- Apply rewards
-  profile.coins = profile.coins + reward_coins
-  profile.xp = profile.xp + reward_xp
-
-  -- Simple level formula (can change later)
-  -- Every 100 XP = +1 level
-  profile.level = math.floor(profile.xp / 100) + 1
-
-  -- Write back to storage (SERVER-ONLY)
-  local write = {
+local function mark_reward_given(user_id, match_id)
+  nk.storage_write({
     {
-      collection = "profile",
-      key = "player",
-      user_id = target_user_id,
-      value = profile,
-      permission_read = 1,
-      permission_write = 1 -- still open for now
+      collection = "match_rewards",
+      key = match_id,
+      user_id = user_id,
+      value = {
+        given_at = os.time()
+      },
+      permission_read = 0,
+      permission_write = 0
     }
-  }
-
-  nk.storage_write(write)
-
-  nk.logger_info(
-    string.format(
-      "Rewards applied to %s | coins +%d | xp +%d | level %d",
-      target_user_id,
-      reward_coins,
-      reward_xp,
-      profile.level
-    )
-  )
-
-  return nk.json_encode({
-    success = true,
-    profile = profile
   })
 end
 
-nk.register_rpc(apply_match_rewards_rpc, "apply_match_rewards")
--- apply_match_rewards.lua
-local nk = require("nakama")
+-- =====================================================
+-- CORE SERVER REWARD LOGIC (USED BY MATCH)
+-- =====================================================
+local function apply_rewards(user_id, rewards, match_id)
+  -- 🔒 PHASE C: Require match_id
+  if not match_id then
+    nk.logger_error("apply_rewards blocked: missing match_id")
+    return nil
+  end
 
--- ==============================
--- CORE SERVER REWARD LOGIC
--- ==============================
-local function apply_rewards(user_id, rewards)
+  -- 🔒 PHASE C: Prevent duplicate rewards
+  if reward_already_given(user_id, match_id) then
+    nk.logger_warn(
+      string.format(
+        "Duplicate reward prevented | user=%s | match=%s",
+        user_id,
+        match_id
+      )
+    )
+    return nil
+  end
+
+  -- Read existing profile
   local objects = nk.storage_read({
     {
       collection = "profile",
@@ -98,20 +69,20 @@ local function apply_rewards(user_id, rewards)
 
   local profile = objects[1].value
 
-  -- Safety defaults
+  -- Safety defaults (UNCHANGED)
   profile.coins = profile.coins or 0
   profile.xp = profile.xp or 0
   profile.level = profile.level or 1
   profile.wins = profile.wins or 0
   profile.matches_played = profile.matches_played or 0
 
-  -- Apply rewards
+  -- Apply rewards (UNCHANGED)
   profile.coins = profile.coins + (rewards.coins or 0)
   profile.xp = profile.xp + (rewards.xp or 0)
   profile.wins = profile.wins + 1
   profile.matches_played = profile.matches_played + 1
 
-  -- Level formula
+  -- Level formula (UNCHANGED)
   profile.level = math.floor(profile.xp / 100) + 1
 
   -- Write back (SERVER AUTHORITATIVE)
@@ -126,22 +97,26 @@ local function apply_rewards(user_id, rewards)
     }
   })
 
+  -- 🔐 PHASE C: Lock reward for this match
+  mark_reward_given(user_id, match_id)
+
   nk.logger_info(
     string.format(
-      "Rewards applied | user=%s | coins=%d | xp=%d | level=%d",
+      "Rewards applied | user=%s | coins=%d | xp=%d | level=%d | match=%s",
       user_id,
       profile.coins,
       profile.xp,
-      profile.level
+      profile.level,
+      match_id
     )
   )
 
   return profile
 end
 
--- ==============================
--- RPC (FOR TESTING ONLY)
--- ==============================
+-- =====================================================
+-- RPC (FOR TESTING ONLY – POSTMAN)
+-- =====================================================
 local function apply_match_rewards_rpc(context, payload)
   if not context.user_id then
     return nk.json_encode({ error = "unauthorized" }), 401
@@ -153,13 +128,25 @@ local function apply_match_rewards_rpc(context, payload)
     return nk.json_encode({ error = "missing_user_id" }), 400
   end
 
-  local profile = apply_rewards(input.user_id, {
-    coins = input.coins or 0,
-    xp = input.xp or 0
-  })
+  -- 🔒 PHASE C: Require match_id even for testing
+  if not input.match_id then
+    return nk.json_encode({ error = "missing_match_id" }), 400
+  end
+
+  local profile = apply_rewards(
+    input.user_id,
+    {
+      coins = input.coins or 0,
+      xp = input.xp or 0
+    },
+    input.match_id
+  )
 
   if not profile then
-    return nk.json_encode({ error = "profile_not_found" }), 404
+    return nk.json_encode({
+      success = false,
+      reason = "reward_not_applied"
+    })
   end
 
   return nk.json_encode({
