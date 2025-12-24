@@ -37,6 +37,8 @@ safe_require("create_user")
 safe_require("convert_guest_to_permanent")
 safe_require("admin_delete_account")
 safe_require("guest_cleanup")
+require("rpc_get_daily_tasks")
+
 
 ------------------------------------------------
 -- 3) Match handler
