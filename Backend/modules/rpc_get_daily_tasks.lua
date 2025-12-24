@@ -2,7 +2,7 @@ local nk = require("nakama")
 
 local function get_daily_tasks(context, payload)
   if not context.user_id then
-    return nk.json_encode({ error = "unauthorized" }), 401
+    return nk.json_encode({ error = "unauthorized" })
   end
 
   local today = os.date("%Y-%m-%d")
@@ -15,7 +15,7 @@ local function get_daily_tasks(context, payload)
     }
   })
 
-  -- 🟢 DEFAULT DAILY STRUCTURE (SAFE FALLBACK)
+  -- ✅ SAFE DEFAULT (important for new users)
   local tasks = {
     date = today,
     play_matches = 0,
@@ -28,7 +28,6 @@ local function get_daily_tasks(context, payload)
     }
   }
 
-  -- 📦 EXISTING DATA
   if objects and #objects > 0 then
     local stored = objects[1].value
 
@@ -38,17 +37,7 @@ local function get_daily_tasks(context, payload)
     end
   end
 
-  -- 🛡️ GUARANTEE FIELDS (ANTI-NIL)
-  tasks.play_matches = tasks.play_matches or 0
-  tasks.win_matches = tasks.win_matches or 0
-  tasks.dice_rolls = tasks.dice_rolls or 0
-  tasks.completed = tasks.completed or {
-    play = false,
-    win = false,
-    dice = false
-  }
-
-  return nk.json_encode(tasks), 200
+  return nk.json_encode(tasks)
 end
 
 nk.register_rpc(get_daily_tasks, "daily.tasks.get")
