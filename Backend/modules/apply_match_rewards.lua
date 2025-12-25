@@ -1,8 +1,11 @@
 -- apply_match_rewards.lua
 local nk = require("nakama")
 
+-- 🔒 PHASE D-3: Rate limit helper (NEW)
+local rate_limit = require("utils_rate_limit")
+
 -- =====================================================
--- PHASE C ADDITION: REWARD DUPLICATE PREVENTION (NEW)
+-- PHASE C ADDITION: REWARD DUPLICATE PREVENTION
 -- =====================================================
 local function reward_already_given(user_id, match_id)
   local result = nk.storage_read({
@@ -122,6 +125,12 @@ local function apply_match_rewards_rpc(context, payload)
     return nk.json_encode({ error = "unauthorized" }), 401
   end
 
+  -- 🔒 PHASE D-3: RPC rate limiting (NEW)
+  local ok, reason = rate_limit.check(context, "apply_match_rewards", 2)
+  if not ok then
+    return nk.json_encode({ error = reason }), 429
+  end
+
   local input = nk.json_decode(payload or "{}")
 
   if not input.user_id then
@@ -159,4 +168,3 @@ nk.register_rpc(apply_match_rewards_rpc, "apply_match_rewards")
 
 -- EXPORT CORE FUNCTION FOR MATCH USE
 return apply_rewards
-
