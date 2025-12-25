@@ -93,7 +93,7 @@ local function apply_rewards(user_id, rewards, match_id)
       user_id = user_id,
       value = profile,
       permission_read = 1,
-      permission_write = 1 -- 🔒 WILL LOCK LATER
+      permission_write = 0 -- 🔒 LOCKED (Phase D-2)
     }
   })
 
@@ -159,3 +159,4 @@ nk.register_rpc(apply_match_rewards_rpc, "apply_match_rewards")
 
 -- EXPORT CORE FUNCTION FOR MATCH USE
 return apply_rewards
+
