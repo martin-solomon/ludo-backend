@@ -59,6 +59,8 @@ safe_require("rpc_match_start")
 safe_require("rpc_get_profile")
 --safe_require("rpc_debug_rewards")
 --safe_require("rpc_debug_rewards")
+safe_require("utils_rate_limit")
+
 
 ------------------------------------------------
 -- 5) Startup confirmation
