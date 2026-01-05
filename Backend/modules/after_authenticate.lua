@@ -1,21 +1,21 @@
+local nk = require("nakama")
 local M = {}
 
-function M.after_authenticate(ctx)
-    if not ctx or not ctx.user_id then return end
-    if not ctx.vars then return end
+function M.after_authenticate(context, account)
+  -- HARD GUARDS (MANDATORY)
+  if not context or not account then return end
+  if not account.user_id then return end
 
-    local username = ctx.vars["username"]
-    if not username or username == "" then return end
+  -- Only set username if missing (guest users)
+  if not account.username or account.username == "" then
+    local new_username = "guest_" .. string.sub(account.user_id, 1, 8)
 
-    local nk = require("nakama")
-
-    local ok, err = pcall(nk.account_update_id, ctx.user_id, {
-        username = tostring(username)
+    pcall(nk.account_update_id, account.user_id, {
+      username = new_username
     })
+  end
 
-    if not ok then
-        nk.logger_warn("after_authenticate failed: " .. tostring(err))
-    end
+  -- NEVER return anything from this hook
 end
 
 return M
