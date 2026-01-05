@@ -18,12 +18,13 @@ function M.match_init(context, params)
 
     game_started = false,
     game_over = false,
+    match_finished = false,
 
-    match_finished = false, -- ✅ PHASE B ADDITION
+    version = 0,            -- ✅ PHASE A ADDITION (STATE VERSION)
 
     winner = nil,
     created_at = os.time(),
-    _signals = {} -- used ONLY by match_signal
+    _signals = {}
   }
 
   return state, 1, "ludo_match"
@@ -56,7 +57,8 @@ function M.match_join(context, dispatcher, tick, state, presences)
 
     dispatcher.broadcast_message(1, nk.json_encode({
       type = "game_started",
-      first_turn = state.current_turn
+      first_turn = state.current_turn,
+      version = state.version
     }))
   end
 
@@ -74,7 +76,7 @@ function M.match_leave(context, dispatcher, tick, state, presences)
 end
 
 ------------------------------------------------
--- match_signal (ENTRY POINT FROM RPC)
+-- match_signal
 ------------------------------------------------
 function M.match_signal(context, dispatcher, tick, state, data)
   local signal = nk.json_decode(data)
@@ -92,7 +94,7 @@ function M.match_loop(context, dispatcher, tick, state, messages)
   for _, signal in ipairs(state._signals) do
     table.insert(messages, {
       sender = { user_id = signal.user_id },
-      data = nk.json_encode({ action = signal.action }),
+      data = nk.json_encode(signal),
       op_code = 1
     })
   end
@@ -107,20 +109,35 @@ function M.match_loop(context, dispatcher, tick, state, messages)
       return state
     end
 
+    -- 🔒 VERSION CHECK (PHASE A CORE)
+    if data.client_version ~= state.version then
+      nk.logger_warn(
+        string.format(
+          "Rejected stale action | user=%s client=%s server=%s",
+          user_id,
+          tostring(data.client_version),
+          tostring(state.version)
+        )
+      )
+      return state
+    end
+
     if data.action == "roll_dice" then
+      -- ✅ ACCEPT ACTION → INCREMENT VERSION
+      state.version = state.version + 1
+
       local dice = math.random(1, 6)
       state.dice_value = dice
 
       dispatcher.broadcast_message(1, nk.json_encode({
         type = "dice_result",
         user_id = user_id,
-        value = dice
+        value = dice,
+        version = state.version
       }))
 
-      -- 🏆 WIN CONDITION (PHASE B HARDENED)
+      -- 🏆 WIN CONDITION
       if dice == 6 then
-
-        -- ✅ PHASE B GUARD (CRITICAL)
         if state.match_finished then
           return state
         end
@@ -136,7 +153,8 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         dispatcher.broadcast_message(1, nk.json_encode({
           type = "game_over",
           winner = user_id,
-          rewards = rewards
+          rewards = rewards,
+          version = state.version
         }))
 
         return state
@@ -152,7 +170,8 @@ function M.match_loop(context, dispatcher, tick, state, messages)
 
       dispatcher.broadcast_message(1, nk.json_encode({
         type = "next_turn",
-        user_id = state.current_turn
+        user_id = state.current_turn,
+        version = state.version
       }))
     end
   end
