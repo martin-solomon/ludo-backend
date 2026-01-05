@@ -1,5 +1,5 @@
 local nk = require("nakama")
-local inventory = require("inventory_helper") -- ✅ ADD THIS
+local inventory = require("inventory_helper") -- ✅ ADDED
 
 local function parse_rpc_payload(payload)
   if payload == nil then return {} end
@@ -7,12 +7,6 @@ local function parse_rpc_payload(payload)
   if type(payload) == "string" then
     local ok, decoded = pcall(nk.json_decode, payload)
     if ok and type(decoded) == "table" then return decoded end
-    local inner = payload:match('^"(.*)"$')
-    if inner then
-      inner = inner:gsub('\\"', '"')
-      local ok2, decoded2 = pcall(nk.json_decode, inner)
-      if ok2 and type(decoded2) == "table" then return decoded2 end
-    end
   end
   return {}
 end
@@ -32,19 +26,14 @@ local function create_user_rpc(context, payload)
 
   local user_id = context.user_id
 
-  -- 🔐 ENSURE INVENTORY EXISTS (EMAIL / GOOGLE USERS)
-  inventory.create_inventory_if_missing(user_id) -- ✅ ADD THIS
-
-  -- 🔹 PROFILE INITIALIZATION (UNCHANGED)
+  -- 🔹 PROFILE INITIALIZATION
   local profile_value = {
     username = username,
     email = email,
     guest = false,
-
     coins = 1000,
     xp = 0,
     level = 1,
-
     created_at = nk.time() * 1000
   }
 
@@ -59,13 +48,12 @@ local function create_user_rpc(context, payload)
 
   local ok, err = pcall(nk.storage_write, { profile_obj })
   if not ok then
-    nk.logger_error(
-      "create_user: storage_write failed user_id=%s err=%s",
-      tostring(user_id),
-      tostring(err)
-    )
+    nk.logger_error("create_user: storage_write failed user_id=%s err=%s", tostring(user_id), tostring(err))
     return nk.json_encode({ error = "storage_write_failed" }), 500
   end
+
+  -- 🧳 INVENTORY INIT (NEW USERS WITHOUT GUEST)
+  inventory.ensure_inventory(user_id) -- ✅ ADDED
 
   -- Username index (UNCHANGED)
   local username_key = string.lower(username)
