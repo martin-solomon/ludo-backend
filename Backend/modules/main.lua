@@ -33,7 +33,7 @@ safe_require("inventory_helper")
 -- 2) AUTH LIFECYCLE HOOKS (CRITICAL)
 ------------------------------------------------
 -- after_authenticate.lua MUST return a table with function after_authenticate()
-local after_auth = safe_require("after_authenticate")
+local after_auth = require("after_authenticate")
 if after_auth and type(after_auth.after_authenticate) == "function" then
   nk.register_after_authenticate(after_auth.after_authenticate)
   nk.logger_info("main.lua: after_authenticate hook registered")
