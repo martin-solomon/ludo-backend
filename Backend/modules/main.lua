@@ -1,87 +1,77 @@
 -- main.lua
--- HARD SAFE RUNTIME LOADER
--- This file is designed to NEVER crash Nakama.
--- Broken modules will be logged and skipped instead of causing 502.
+-- Central loader for Nakama Lua modules. Uses safe_require so a broken module
+-- doesn't stop the whole runtime from starting.
 
 local nk = require("nakama")
 
-nk.logger_info("🚀 Nakama Lua runtime starting (SAFE MODE)")
+-- 0) Optional helpers (non-fatal)
+pcall(function()
+  require("main_helpers")
+end)
 
-------------------------------------------------
--- SAFE REQUIRE HELPER
-------------------------------------------------
+-- Helper: safely require a module and log any error without crashing startup.
 local function safe_require(name)
-  local ok, mod = pcall(require, name)
+  local ok, result = pcall(require, name)
   if not ok then
-    nk.logger_error("❌ FAILED to load module: " .. name)
-    nk.logger_error("   Reason: " .. tostring(mod))
-    return nil
+    -- result contains the error message when pcall fails
+    nk.logger_error("main.lua: require '" .. name .. "' failed: " .. tostring(result))
+    return nil, result
   end
-  nk.logger_info("✅ Loaded module: " .. name)
-  return mod
+  nk.logger_info("main.lua: required '" .. name .. "'")
+  return result, nil
 end
 
 ------------------------------------------------
--- CORE UTILITIES (SAFE)
+-- 1) Low-level helpers (loaded FIRST)
 ------------------------------------------------
+-- Core RPC utilities
 safe_require("utils_rpc")
+
+-- 🔒 Inventory helper (NEW – required for assets system)
 safe_require("inventory_helper")
-safe_require("utils_rate_limit")
 
 ------------------------------------------------
--- AUTH / PROFILE RPCs
+-- 2) Account / profile lifecycle RPCs
 ------------------------------------------------
-safe_require("create_guest_profile")
-safe_require("create_user")
-safe_require("convert_guest_to_permanent")
-safe_require("admin_delete_account")
-safe_require("guest_cleanup")
+local rpc_first = {
+  "create_guest_profile",
+  "create_user",
+  "convert_guest_to_permanent",
+  "admin_delete_account",
+  "guest_cleanup"
+}
+
+for _, m in ipairs(rpc_first) do
+  safe_require(m)
+end
 
 ------------------------------------------------
--- MATCH HANDLER
+-- 3) Match handler
+-- IMPORTANT:
+-- ludo_match.lua RETURNS the match table
+-- Nakama auto-registers it
 ------------------------------------------------
-local match_mod = safe_require("ludo_match")
+local match_mod, match_err = safe_require("ludo_match")
 if not match_mod then
-  nk.logger_warn("⚠️ ludo_match not loaded – matches disabled")
+  nk.logger_warn(
+    "main.lua: ludo_match not loaded or returned nil: " .. tostring(match_err)
+  )
 end
 
 ------------------------------------------------
--- MATCH RPCs
+-- 4) Match-related RPCs
 ------------------------------------------------
-safe_require("rpc_quick_join")
-safe_require("rpc_player_list")
-safe_require("rpc_match_start")
+local rpc_late = {
+  "rpc_quick_join",
+  "rpc_player_list",
+  "rpc_match_start"
+}
 
-------------------------------------------------
--- PROGRESSION / ECONOMY
-------------------------------------------------
-safe_require("apply_match_rewards")
-safe_require("update_daily_tasks")
-
-------------------------------------------------
--- READ-ONLY RPCs
-------------------------------------------------
-safe_require("rpc_get_profile")
-safe_require("rpc_get_leaderboard")
-
-------------------------------------------------
--- OPTIONAL AUTH HOOK (SAFE)
-------------------------------------------------
-local after_auth = safe_require("after_authenticate")
-if after_auth and after_auth.after_authenticate then
-  local ok, err = pcall(function()
-    nk.register_after_authenticate(after_auth.after_authenticate)
-  end)
-  if ok then
-    nk.logger_info("✅ after_authenticate hook registered")
-  else
-    nk.logger_error("❌ Failed to register after_authenticate: " .. tostring(err))
-  end
-else
-  nk.logger_warn("⚠️ after_authenticate hook not registered (module missing or invalid)")
+for _, m in ipairs(rpc_late) do
+  safe_require(m)
 end
 
 ------------------------------------------------
--- FINAL CONFIRMATION
+-- 5) Startup confirmation
 ------------------------------------------------
-nk.logger_info("✅ Nakama Lua runtime loaded successfully (NO 502)")
+nk.logger_info("main.lua loaded: runtime modules required and RPCs registered.")
