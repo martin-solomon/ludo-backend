@@ -1,97 +1,87 @@
 -- main.lua
--- Central loader for Nakama Lua modules.
--- Uses safe_require so a broken module does NOT crash the server.
+-- HARD SAFE RUNTIME LOADER
+-- This file is designed to NEVER crash Nakama.
+-- Broken modules will be logged and skipped instead of causing 502.
 
 local nk = require("nakama")
 
+nk.logger_info("🚀 Nakama Lua runtime starting (SAFE MODE)")
+
 ------------------------------------------------
--- Helper: safely require a module
+-- SAFE REQUIRE HELPER
 ------------------------------------------------
 local function safe_require(name)
-  local ok, result = pcall(require, name)
+  local ok, mod = pcall(require, name)
   if not ok then
-    nk.logger_error("main.lua: require '" .. name .. "' failed: " .. tostring(result))
+    nk.logger_error("❌ FAILED to load module: " .. name)
+    nk.logger_error("   Reason: " .. tostring(mod))
     return nil
   end
-  nk.logger_info("main.lua: loaded '" .. name .. "'")
-  return result
+  nk.logger_info("✅ Loaded module: " .. name)
+  return mod
 end
 
 ------------------------------------------------
--- 0) OPTIONAL HELPERS (NON-FATAL)
-------------------------------------------------
-safe_require("main_helpers")
-
-------------------------------------------------
--- 1) CORE HELPERS (LOAD FIRST)
+-- CORE UTILITIES (SAFE)
 ------------------------------------------------
 safe_require("utils_rpc")
-safe_require("utils_rate_limit")
 safe_require("inventory_helper")
+safe_require("utils_rate_limit")
 
 ------------------------------------------------
--- 2) AUTH LIFECYCLE HOOKS (CRITICAL)
+-- AUTH / PROFILE RPCs
 ------------------------------------------------
--- after_authenticate.lua MUST return a table with function after_authenticate()
-local after_auth = require("after_authenticate")
-if after_auth and type(after_auth.after_authenticate) == "function" then
-  nk.register_after_authenticate(after_auth.after_authenticate)
-  nk.logger_info("main.lua: after_authenticate hook registered")
-else
-  nk.logger_warn("main.lua: after_authenticate hook NOT registered (missing or invalid)")
-end
+safe_require("create_guest_profile")
+safe_require("create_user")
+safe_require("convert_guest_to_permanent")
+safe_require("admin_delete_account")
+safe_require("guest_cleanup")
 
 ------------------------------------------------
--- 3) ACCOUNT / PROFILE RPCs
+-- MATCH HANDLER
 ------------------------------------------------
-local account_rpcs = {
-  "create_guest_profile",
-  "create_user",
-  "convert_guest_to_permanent",
-  "admin_delete_account",
-  "guest_cleanup"
-}
-
-for _, mod in ipairs(account_rpcs) do
-  safe_require(mod)
-end
-
-------------------------------------------------
--- 4) MATCH HANDLER
-------------------------------------------------
--- ludo_match.lua RETURNS a match table
--- Nakama auto-registers it when required
 local match_mod = safe_require("ludo_match")
 if not match_mod then
-  nk.logger_error("main.lua: ludo_match failed to load")
+  nk.logger_warn("⚠️ ludo_match not loaded – matches disabled")
 end
 
 ------------------------------------------------
--- 5) MATCH-RELATED RPCs
+-- MATCH RPCs
 ------------------------------------------------
-local match_rpcs = {
-  "rpc_quick_join",
-  "rpc_player_list",
-  "rpc_match_start"
-}
-
-for _, mod in ipairs(match_rpcs) do
-  safe_require(mod)
-end
+safe_require("rpc_quick_join")
+safe_require("rpc_player_list")
+safe_require("rpc_match_start")
 
 ------------------------------------------------
--- 6) ECONOMY / PROGRESSION
+-- PROGRESSION / ECONOMY
 ------------------------------------------------
 safe_require("apply_match_rewards")
 safe_require("update_daily_tasks")
 
 ------------------------------------------------
--- 7) READ-ONLY RPCs
+-- READ-ONLY RPCs
 ------------------------------------------------
 safe_require("rpc_get_profile")
 safe_require("rpc_get_leaderboard")
 
 ------------------------------------------------
--- 8) STARTUP CONFIRMATION
+-- OPTIONAL AUTH HOOK (SAFE)
 ------------------------------------------------
-nk.logger_info("main.lua loaded successfully — Nakama runtime ready")
+local after_auth = safe_require("after_authenticate")
+if after_auth and after_auth.after_authenticate then
+  local ok, err = pcall(function()
+    nk.register_after_authenticate(after_auth.after_authenticate)
+  end)
+  if ok then
+    nk.logger_info("✅ after_authenticate hook registered")
+  else
+    nk.logger_error("❌ Failed to register after_authenticate: " .. tostring(err))
+  end
+else
+  nk.logger_warn("⚠️ after_authenticate hook not registered (module missing or invalid)")
+end
+
+------------------------------------------------
+-- FINAL CONFIRMATION
+------------------------------------------------
+nk.logger_info("✅ Nakama Lua runtime loaded successfully (NO 502)")
