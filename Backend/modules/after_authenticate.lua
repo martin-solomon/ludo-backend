@@ -1,21 +1,24 @@
 local nk = require("nakama")
+
 local M = {}
 
-function M.after_authenticate(context, account)
-  -- HARD GUARDS (MANDATORY)
-  if not context or not account then return end
-  if not account.user_id then return end
-
-  -- Only set username if missing (guest users)
-  if not account.username or account.username == "" then
-    local new_username = "guest_" .. string.sub(account.user_id, 1, 8)
-
-    pcall(nk.account_update_id, account.user_id, {
-      username = new_username
-    })
+function M.after_authenticate(context, session, source)
+  -- Defensive coding ONLY
+  if not session or not session.user_id then
+    return
   end
 
-  -- NEVER return anything from this hook
+  -- OPTIONAL: log once for debug
+  nk.logger_info(
+    string.format(
+      "after_authenticate: user_id=%s source=%s",
+      session.user_id,
+      tostring(source)
+    )
+  )
+
+  -- DO NOT write storage here yet
+  -- DO NOT call other modules yet
 end
 
 return M
