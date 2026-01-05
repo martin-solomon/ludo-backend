@@ -1,4 +1,5 @@
 local nk = require("nakama")
+local inventory = require("inventory_helper") -- ✅ ADD THIS
 
 local function parse_rpc_payload(payload)
   if payload == nil then return {} end
@@ -28,9 +29,14 @@ local function convert_rpc(context, payload)
     return nk.json_encode({ error = "no_session" }), 401
   end
 
+  -- 🔐 ENSURE INVENTORY EXISTS (SAFE)
+  inventory.create_inventory_if_missing(user_id) -- ✅ ADD THIS
+
   -- Read existing profile by user_id (optional)
-  local read_ok, read_res = pcall(nk.storage_read, { { collection = "user_profiles", key = user_id } })
-  -- update or create profile object
+  local read_ok, read_res = pcall(nk.storage_read, {
+    { collection = "user_profiles", key = user_id }
+  })
+
   local profile_value = {
     username = username,
     email = email,
@@ -49,11 +55,14 @@ local function convert_rpc(context, payload)
 
   local ok, err = pcall(nk.storage_write, { profile_obj })
   if not ok then
-    nk.logger_error("convert_guest_to_permanent: storage_write failed user_id=%s err=%s", tostring(user_id), tostring(err))
+    nk.logger_error(
+      "convert_guest_to_permanent: storage_write failed user_id=%s err=%s",
+      tostring(user_id), tostring(err)
+    )
     return nk.json_encode({ error = "storage_write_failed" }), 500
   end
 
-  -- ensure username index exists for the new username
+  -- Username index (unchanged)
   if type(username) == "string" and username ~= "" then
     local username_key = string.lower(username)
     local index_obj = {
@@ -69,10 +78,7 @@ local function convert_rpc(context, payload)
       permission_read = 2,
       permission_write = 0
     }
-    local ok2, err2 = pcall(nk.storage_write, { index_obj })
-    if not ok2 then
-      nk.logger_error("convert_guest_to_permanent: username index write failed key=%s err=%s", tostring(username_key), tostring(err2))
-    end
+    pcall(nk.storage_write, { index_obj })
   end
 
   return nk.json_encode({ success = true, user_id = user_id })
