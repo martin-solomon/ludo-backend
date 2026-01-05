@@ -1,5 +1,5 @@
 local nk = require("nakama")
-local inventory = require("inventory_helper") -- ✅ ADD THIS
+local inventory = require("inventory_helper") -- ✅ ADDED
 
 local function parse_rpc_payload(payload)
   if payload == nil then return {} end
@@ -7,12 +7,6 @@ local function parse_rpc_payload(payload)
   if type(payload) == "string" then
     local ok, decoded = pcall(nk.json_decode, payload)
     if ok and type(decoded) == "table" then return decoded end
-    local inner = payload:match('^"(.*)"$')
-    if inner then
-      inner = inner:gsub('\\"', '"')
-      local ok2, decoded2 = pcall(nk.json_decode, inner)
-      if ok2 and type(decoded2) == "table" then return decoded2 end
-    end
   end
   return {}
 end
@@ -22,21 +16,13 @@ local function convert_rpc(context, payload)
   local username = input.username or ""
   local email = input.email or ""
 
-  local user_id = nil
-  if context and context.user_id then
-    user_id = context.user_id
-  else
+  if not context or not context.user_id then
     return nk.json_encode({ error = "no_session" }), 401
   end
 
-  -- 🔐 ENSURE INVENTORY EXISTS (SAFE)
-  inventory.create_inventory_if_missing(user_id) -- ✅ ADD THIS
+  local user_id = context.user_id
 
-  -- Read existing profile by user_id (optional)
-  local read_ok, read_res = pcall(nk.storage_read, {
-    { collection = "user_profiles", key = user_id }
-  })
-
+  -- Update profile
   local profile_value = {
     username = username,
     email = email,
@@ -55,31 +41,12 @@ local function convert_rpc(context, payload)
 
   local ok, err = pcall(nk.storage_write, { profile_obj })
   if not ok then
-    nk.logger_error(
-      "convert_guest_to_permanent: storage_write failed user_id=%s err=%s",
-      tostring(user_id), tostring(err)
-    )
+    nk.logger_error("convert_guest_to_permanent failed user_id=%s err=%s", tostring(user_id), tostring(err))
     return nk.json_encode({ error = "storage_write_failed" }), 500
   end
 
-  -- Username index (unchanged)
-  if type(username) == "string" and username ~= "" then
-    local username_key = string.lower(username)
-    local index_obj = {
-      collection = "user_profiles",
-      key = username_key,
-      user_id = user_id,
-      value = {
-        username = username,
-        user_id = user_id,
-        guest = false,
-        converted_at = nk.time() * 1000
-      },
-      permission_read = 2,
-      permission_write = 0
-    }
-    pcall(nk.storage_write, { index_obj })
-  end
+  -- 🧳 ENSURE INVENTORY SURVIVES CONVERSION
+  inventory.ensure_inventory(user_id) -- ✅ ADDED
 
   return nk.json_encode({ success = true, user_id = user_id })
 end
