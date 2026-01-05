@@ -1,32 +1,35 @@
 local nk = require("nakama")
 
--- Runs immediately AFTER any authentication (device, email, Google, etc.)
+-- Register hook SAFELY
 nk.register_after_authenticate(function(ctx)
-    -- We only care about guest/device auth
-    if not ctx or not ctx.user_id then
+    -- Absolute safety checks
+    if not ctx then
         return
     end
 
-    -- Username sent from frontend during auth
-    local username =
-        ctx.vars and ctx.vars.username and tostring(ctx.vars.username) or nil
+    if not ctx.user_id then
+        return
+    end
+
+    -- vars may be nil
+    if not ctx.vars then
+        return
+    end
+
+    local username = ctx.vars["username"]
 
     if not username or username == "" then
         return
     end
 
-    -- Try to set username ONCE, safely
+    -- Update username ONCE
     local ok, err = pcall(nk.account_update_id, ctx.user_id, {
-        username = username
+        username = tostring(username)
     })
 
     if not ok then
         nk.logger_warn(
-            "Username update failed during after_authenticate: " .. tostring(err)
-        )
-    else
-        nk.logger_info(
-            "Username set during auth | user_id=" .. ctx.user_id .. " | username=" .. username
+            "after_authenticate username update failed: " .. tostring(err)
         )
     end
 end)
