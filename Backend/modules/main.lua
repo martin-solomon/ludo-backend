@@ -13,7 +13,6 @@ end)
 local function safe_require(name)
   local ok, result = pcall(require, name)
   if not ok then
-    -- result contains the error message when pcall fails
     nk.logger_error("main.lua: require '" .. name .. "' failed: " .. tostring(result))
     return nil, result
   end
@@ -24,10 +23,9 @@ end
 ------------------------------------------------
 -- 1) Low-level helpers (loaded FIRST)
 ------------------------------------------------
--- Core RPC utilities
 safe_require("utils_rpc")
 
--- 🔒 Inventory helper (NEW – required for assets system)
+-- 🔒 Inventory helper
 safe_require("inventory_helper")
 
 ------------------------------------------------
@@ -43,6 +41,18 @@ local rpc_first = {
 
 for _, m in ipairs(rpc_first) do
   safe_require(m)
+end
+
+------------------------------------------------
+-- 2.5) AUTH LIFECYCLE HOOKS (CRITICAL FIX)
+------------------------------------------------
+local after_auth = safe_require("after_authenticate")
+
+if after_auth and after_auth.after_authenticate then
+  nk.register_after_authenticate(after_auth.after_authenticate)
+  nk.logger_info("main.lua: after_authenticate hook registered")
+else
+  nk.logger_warn("main.lua: after_authenticate hook NOT registered")
 end
 
 ------------------------------------------------
