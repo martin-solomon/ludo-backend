@@ -1,37 +1,50 @@
 -- main.lua
--- Central loader for Nakama Lua modules. Uses safe_require so a broken module
--- doesn't stop the whole runtime from starting.
+-- Central loader for Nakama Lua modules.
+-- Uses safe_require so a broken module does NOT crash the server.
 
 local nk = require("nakama")
 
--- 0) Optional helpers (non-fatal)
-pcall(function()
-  require("main_helpers")
-end)
-
--- Helper: safely require a module and log any error without crashing startup.
+------------------------------------------------
+-- Helper: safely require a module
+------------------------------------------------
 local function safe_require(name)
   local ok, result = pcall(require, name)
   if not ok then
     nk.logger_error("main.lua: require '" .. name .. "' failed: " .. tostring(result))
-    return nil, result
+    return nil
   end
-  nk.logger_info("main.lua: required '" .. name .. "'")
-  return result, nil
+  nk.logger_info("main.lua: loaded '" .. name .. "'")
+  return result
 end
 
 ------------------------------------------------
--- 1) Low-level helpers (loaded FIRST)
+-- 0) OPTIONAL HELPERS (NON-FATAL)
+------------------------------------------------
+safe_require("main_helpers")
+
+------------------------------------------------
+-- 1) CORE HELPERS (LOAD FIRST)
 ------------------------------------------------
 safe_require("utils_rpc")
-
--- 🔒 Inventory helper
+safe_require("utils_rate_limit")
 safe_require("inventory_helper")
 
 ------------------------------------------------
--- 2) Account / profile lifecycle RPCs
+-- 2) AUTH LIFECYCLE HOOKS (CRITICAL)
 ------------------------------------------------
-local rpc_first = {
+-- after_authenticate.lua MUST return a table with function after_authenticate()
+local after_auth = safe_require("after_authenticate")
+if after_auth and type(after_auth.after_authenticate) == "function" then
+  nk.register_after_authenticate(after_auth.after_authenticate)
+  nk.logger_info("main.lua: after_authenticate hook registered")
+else
+  nk.logger_warn("main.lua: after_authenticate hook NOT registered (missing or invalid)")
+end
+
+------------------------------------------------
+-- 3) ACCOUNT / PROFILE RPCs
+------------------------------------------------
+local account_rpcs = {
   "create_guest_profile",
   "create_user",
   "convert_guest_to_permanent",
@@ -39,49 +52,46 @@ local rpc_first = {
   "guest_cleanup"
 }
 
-for _, m in ipairs(rpc_first) do
-  safe_require(m)
+for _, mod in ipairs(account_rpcs) do
+  safe_require(mod)
 end
 
 ------------------------------------------------
--- 2.5) AUTH LIFECYCLE HOOKS (CRITICAL FIX)
+-- 4) MATCH HANDLER
 ------------------------------------------------
-local after_auth = safe_require("after_authenticate")
-
-if after_auth and after_auth.after_authenticate then
-  nk.register_after_authenticate(after_auth.after_authenticate)
-  nk.logger_info("main.lua: after_authenticate hook registered")
-else
-  nk.logger_warn("main.lua: after_authenticate hook NOT registered")
-end
-
-------------------------------------------------
--- 3) Match handler
--- IMPORTANT:
--- ludo_match.lua RETURNS the match table
--- Nakama auto-registers it
-------------------------------------------------
-local match_mod, match_err = safe_require("ludo_match")
+-- ludo_match.lua RETURNS a match table
+-- Nakama auto-registers it when required
+local match_mod = safe_require("ludo_match")
 if not match_mod then
-  nk.logger_warn(
-    "main.lua: ludo_match not loaded or returned nil: " .. tostring(match_err)
-  )
+  nk.logger_error("main.lua: ludo_match failed to load")
 end
 
 ------------------------------------------------
--- 4) Match-related RPCs
+-- 5) MATCH-RELATED RPCs
 ------------------------------------------------
-local rpc_late = {
+local match_rpcs = {
   "rpc_quick_join",
   "rpc_player_list",
   "rpc_match_start"
 }
 
-for _, m in ipairs(rpc_late) do
-  safe_require(m)
+for _, mod in ipairs(match_rpcs) do
+  safe_require(mod)
 end
 
 ------------------------------------------------
--- 5) Startup confirmation
+-- 6) ECONOMY / PROGRESSION
 ------------------------------------------------
-nk.logger_info("main.lua loaded: runtime modules required and RPCs registered.")
+safe_require("apply_match_rewards")
+safe_require("update_daily_tasks")
+
+------------------------------------------------
+-- 7) READ-ONLY RPCs
+------------------------------------------------
+safe_require("rpc_get_profile")
+safe_require("rpc_get_leaderboard")
+
+------------------------------------------------
+-- 8) STARTUP CONFIRMATION
+------------------------------------------------
+nk.logger_info("main.lua loaded successfully — Nakama runtime ready")
