@@ -17,7 +17,16 @@ local function rpc_get_profile(context, payload)
     return nk.json_encode({ error = "profile_not_found" }), 404
   end
 
-  return nk.json_encode(objects[1].value)
+  local p = objects[1].value
+
+  return nk.json_encode({
+    username = p.username,
+    level = p.level,
+    xp = p.xp,
+    coins = p.coins,
+    wins = p.wins,
+    losses = p.losses
+  })
 end
 
 nk.register_rpc(rpc_get_profile, "get_profile")
