@@ -1,5 +1,8 @@
 local nk = require("nakama")
 
+-- 🔹 ADD: inventory helper
+local inventory = require("inventory_helper")
+
 local function trim(s)
     return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
@@ -53,6 +56,9 @@ local function create_guest_profile(context, payload)
             }
         })
     end
+
+    -- 🔹 ADD: ensure inventory always exists
+    inventory.ensure_inventory(context.user_id)
 
     return nk.json_encode({
         success = true,
