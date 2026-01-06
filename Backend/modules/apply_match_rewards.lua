@@ -56,7 +56,10 @@ local function apply_rewards(user_id, rewards, match_id)
 
   local profile = objects[1].value
 
+  -- 🔐 WALLET UPDATE (STEP-1 SAFETY)
   profile.coins = (profile.coins or 0) + (rewards.coins or 0)
+  profile.coins = math.max(0, profile.coins) -- ✅ CLAMP: WALLET CAN NEVER GO NEGATIVE
+
   profile.xp = (profile.xp or 0) + (rewards.xp or 0)
   profile.wins = (profile.wins or 0) + 1
   profile.matches_played = (profile.matches_played or 0) + 1
