@@ -33,16 +33,43 @@ local function convert_guest_to_permanent(context, payload)
   local username = input.username or ""
 
   -- 🔎 Validate input
-  if email == "" or password == "" then
-    return nk.json_encode({ error = "email_or_password_missing" }), 400
+  if email == "" or password == "" or username == "" then
+    return nk.json_encode({ error = "missing_params" }), 400
   end
 
   -- -----------------------------------------------------
-  -- 🔑 LINK EMAIL + PASSWORD TO EXISTING USER (CRITICAL)
+  -- 📦 READ EXISTING PROFILE (STEP-4 SAFETY)
+  -- -----------------------------------------------------
+  local objects = nk.storage_read({
+    {
+      collection = "user_profiles",
+      key = user_id,
+      user_id = user_id
+    }
+  })
+
+  local existing_profile = objects[1] and objects[1].value or {}
+
+  -- 🔒 ONE-TIME CONVERSION LOCK
+  if existing_profile.converted == true then
+    return nk.json_encode({ error = "already_converted" }), 409
+  end
+
+  -- -----------------------------------------------------
+  -- 🔍 USERNAME UNIQUENESS CHECK (STEP-4 SAFETY)
+  -- -----------------------------------------------------
+  local users = nk.users_get_username({ username })
+  if users and #users > 0 then
+    return nk.json_encode({ error = "username_taken" }), 409
+  end
+
+  -- -----------------------------------------------------
+  -- 🔑 LINK EMAIL + PASSWORD TO EXISTING USER
   -- -----------------------------------------------------
   local ok, err = pcall(nk.account_update_id, user_id, {
     email = email,
     password = password,
+    username = username
   })
 
   if not ok then
@@ -55,12 +82,13 @@ local function convert_guest_to_permanent(context, payload)
   end
 
   -- -----------------------------------------------------
-  -- 📦 Update User Profile Storage
+  -- 📦 UPDATE PROFILE STORAGE (LOCK CONVERSION)
   -- -----------------------------------------------------
   local profile_value = {
     username = username,
     email = email,
     guest = false,
+    converted = true,
     converted_at = nk.time() * 1000
   }
 
@@ -69,8 +97,8 @@ local function convert_guest_to_permanent(context, payload)
     key = user_id,
     user_id = user_id,
     value = profile_value,
-    permission_read = 2,  -- public read
-    permission_write = 0  -- owner only
+    permission_read = 2,
+    permission_write = 0
   }
 
   local write_ok, write_err = pcall(nk.storage_write, { profile_obj })
@@ -84,7 +112,7 @@ local function convert_guest_to_permanent(context, payload)
   end
 
   -- -----------------------------------------------------
-  -- 🧳 Ensure Inventory Survives Conversion
+  -- 🧳 ENSURE INVENTORY SURVIVES CONVERSION
   -- -----------------------------------------------------
   inventory.ensure_inventory(user_id)
 
