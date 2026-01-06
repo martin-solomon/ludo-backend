@@ -1,5 +1,6 @@
 -- rpc_match_start.lua
 local nk = require("nakama")
+local rate_limit = require("utils_rate_limit")
 
 local function safe_decode(payload)
   local ok, body = pcall(nk.json_decode, payload or "{}")
@@ -11,14 +12,20 @@ local function match_start(context, payload)
     return nk.json_encode({ error = "not_authenticated" })
   end
 
+  -- 🚦 STEP-3: RATE LIMIT (MATCH START)
+  local ok, reason = rate_limit.check(context, "match_start", 5)
+  if not ok then
+    return nk.json_encode({ error = reason }), 429
+  end
+
   local params = safe_decode(payload)
   local match_id = params.matchId or params.match_id
   if not match_id then
     return nk.json_encode({ error = "matchId required" })
   end
 
-  local ok, mdata = pcall(nk.match_get, match_id)
-  if not ok or not mdata then
+  local ok_match, mdata = pcall(nk.match_get, match_id)
+  if not ok_match or not mdata then
     return nk.json_encode({ error = "match_not_found" })
   end
 
