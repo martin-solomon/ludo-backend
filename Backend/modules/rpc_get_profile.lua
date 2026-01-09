@@ -33,8 +33,6 @@ local function rpc_get_user_profile(context, payload)
     local data = nk.json_decode(payload or "{}")
 
     -- 3. RESOLVE TARGET USER
-    --    If user_id provided → opponent
-    --    Else → self (session)
     local target_user_id = data.user_id or context.user_id
 
     -- 4. READ PROFILE STORAGE
@@ -51,27 +49,19 @@ local function rpc_get_user_profile(context, payload)
     if objects and #objects > 0 then
         profile = objects[1].value or {}
     else
-        -- SAFE DEFAULT PROFILE (NEW USERS)
         profile = {
             display_name = "Player",
             avatar_id = "default",
             level = 1,
-            stats = {
-                matches = 0,
-                wins = 0
-            }
+            stats = { matches = 0, wins = 0 }
         }
     end
 
-    -- 5. RETURN PUBLIC-SAFE RESPONSE ONLY
     return nk.json_encode({
         display_name = profile.display_name or "Player",
         avatar_id   = profile.avatar_id   or "default",
         level       = profile.level       or 1,
-        stats       = profile.stats       or {
-            matches = 0,
-            wins = 0
-        }
+        stats       = profile.stats       or { matches = 0, wins = 0 }
     })
 end
 
@@ -81,18 +71,8 @@ nk.register_rpc(rpc_get_user_profile, "rpc_get_user_profile")
 -- =========================================================
 -- STEP-3 : UPDATE OWN PUBLIC PROFILE
 -- =========================================================
--- Allowed updates:
---   - display_name
---   - avatar_id
---
--- Forbidden:
---   - user_id
---   - coins / xp
---   - level / stats
--- =========================================================
 local function rpc_update_profile(context, payload)
 
-    -- 1. AUTH CHECK
     if not context or not context.user_id then
         return nk.json_encode({ error = "unauthorized" })
     end
@@ -100,59 +80,41 @@ local function rpc_update_profile(context, payload)
     local user_id = context.user_id
     local data = nk.json_decode(payload or "{}")
 
-    local new_display_name = data.display_name
-    local new_avatar_id = data.avatar_id
-
-    -- 2. VALIDATION
-    if new_display_name ~= nil then
-        if type(new_display_name) ~= "string" or #new_display_name < 3 or #new_display_name > 20 then
+    if data.display_name then
+        if type(data.display_name) ~= "string" or #data.display_name < 3 or #data.display_name > 20 then
             return nk.json_encode({ error = "invalid_display_name" })
         end
     end
 
-    if new_avatar_id ~= nil then
-        if type(new_avatar_id) ~= "string" or #new_avatar_id == 0 then
+    if data.avatar_id then
+        if type(data.avatar_id) ~= "string" or #data.avatar_id == 0 then
             return nk.json_encode({ error = "invalid_avatar_id" })
         end
     end
 
-    -- 3. READ EXISTING PROFILE
     local objects = nk.storage_read({
-        {
-            collection = "user_profiles",
-            key = user_id,
-            user_id = user_id
-        }
+        { collection = "user_profiles", key = user_id, user_id = user_id }
     })
 
     local profile = {}
-
     if objects and #objects > 0 then
         profile = objects[1].value or {}
     end
 
-    -- 4. APPLY ALLOWED UPDATES ONLY
-    if new_display_name ~= nil then
-        profile.display_name = new_display_name
-    end
+    if data.display_name then profile.display_name = data.display_name end
+    if data.avatar_id then profile.avatar_id = data.avatar_id end
 
-    if new_avatar_id ~= nil then
-        profile.avatar_id = new_avatar_id
-    end
-
-    -- ENSURE REQUIRED FIELDS EXIST
     profile.level = profile.level or 1
     profile.stats = profile.stats or { matches = 0, wins = 0 }
 
-    -- 5. WRITE BACK TO STORAGE
     nk.storage_write({
         {
             collection = "user_profiles",
             key = user_id,
             user_id = user_id,
             value = profile,
-            permission_read = 2,   -- public read
-            permission_write = 1   -- owner write
+            permission_read = 2,
+            permission_write = 1
         }
     })
 
@@ -163,35 +125,95 @@ nk.register_rpc(rpc_update_profile, "rpc_update_profile")
 
 
 -- =========================================================
--- PHASE-2 (START) : WALLET FETCH (COINS ONLY)
--- =========================================================
--- Purpose:
---   Fetch user's wallet coins
--- Used by:
---   - Profile UI
---   - Shop
---   - Asset purchase
---
--- IMPORTANT:
---   - Read-only
---   - Session-based (self only)
+-- PHASE-2 : WALLET FETCH (COINS ONLY)
 -- =========================================================
 local function rpc_get_wallet(context, payload)
 
-    -- 1. AUTH CHECK
     if not context or not context.user_id then
         return nk.json_encode({ error = "unauthorized" })
     end
 
-    local user_id = context.user_id
+    local wallet = nk.wallet_get(context.user_id)
 
-    -- 2. FETCH WALLET
-    local wallet = nk.wallet_get(user_id)
-
-    -- 3. SAFE RESPONSE
     return nk.json_encode({
         coins = wallet.coins or 0
     })
 end
 
 nk.register_rpc(rpc_get_wallet, "rpc_get_wallet")
+
+
+-- =========================================================
+-- PHASE-2 : SPEND COINS (SHOP / ASSET PURCHASE)
+-- =========================================================
+local function rpc_spend_coins(context, payload)
+
+    if not context or not context.user_id then
+        return nk.json_encode({ error = "unauthorized" })
+    end
+
+    local data = nk.json_decode(payload or "{}")
+    local cost = tonumber(data.cost)
+
+    if not cost or cost <= 0 then
+        return nk.json_encode({ error = "invalid_cost" })
+    end
+
+    local wallet = nk.wallet_get(context.user_id)
+    local current_coins = wallet.coins or 0
+
+    if current_coins < cost then
+        return nk.json_encode({
+            error = "insufficient_coins",
+            coins = current_coins
+        })
+    end
+
+    nk.wallet_update(
+        context.user_id,
+        { coins = -cost },
+        { reason = "shop_purchase" }
+    )
+
+    local updated_wallet = nk.wallet_get(context.user_id)
+
+    return nk.json_encode({
+        success = true,
+        coins = updated_wallet.coins
+    })
+end
+
+nk.register_rpc(rpc_spend_coins, "rpc_spend_coins")
+
+
+-- =========================================================
+-- PHASE-2 : ADD COINS (MATCH REWARD / BONUS)
+-- =========================================================
+local function rpc_add_coins(context, payload)
+
+    if not context or not context.user_id then
+        return nk.json_encode({ error = "unauthorized" })
+    end
+
+    local data = nk.json_decode(payload or "{}")
+    local amount = tonumber(data.amount)
+
+    if not amount or amount <= 0 then
+        return nk.json_encode({ error = "invalid_amount" })
+    end
+
+    nk.wallet_update(
+        context.user_id,
+        { coins = amount },
+        { reason = "match_reward" }
+    )
+
+    local wallet = nk.wallet_get(context.user_id)
+
+    return nk.json_encode({
+        success = true,
+        coins = wallet.coins
+    })
+end
+
+nk.register_rpc(rpc_add_coins, "rpc_add_coins")
