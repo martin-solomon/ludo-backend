@@ -133,7 +133,9 @@ local function rpc_get_wallet(context, payload)
         return nk.json_encode({ error = "unauthorized" })
     end
 
-    local wallet = nk.wallet_get(context.user_id)
+    -- ✅ COMPATIBLE WALLET ACCESS
+    local account = nk.account_get_id(context.user_id)
+    local wallet = account.wallet or {}
 
     return nk.json_encode({
         coins = wallet.coins or 0
@@ -159,7 +161,8 @@ local function rpc_spend_coins(context, payload)
         return nk.json_encode({ error = "invalid_cost" })
     end
 
-    local wallet = nk.wallet_get(context.user_id)
+    local account = nk.account_get_id(context.user_id)
+    local wallet = account.wallet or {}
     local current_coins = wallet.coins or 0
 
     if current_coins < cost then
@@ -169,17 +172,18 @@ local function rpc_spend_coins(context, payload)
         })
     end
 
+    -- ✅ WALLET UPDATE (THIS EXISTS EVEN IN OLD VERSIONS)
     nk.wallet_update(
         context.user_id,
         { coins = -cost },
         { reason = "shop_purchase" }
     )
 
-    local updated_wallet = nk.wallet_get(context.user_id)
+    local updated_wallet = nk.account_get_id(context.user_id).wallet
 
     return nk.json_encode({
         success = true,
-        coins = updated_wallet.coins
+        coins = updated_wallet.coins or 0
     })
 end
 
@@ -208,12 +212,13 @@ local function rpc_add_coins(context, payload)
         { reason = "match_reward" }
     )
 
-    local wallet = nk.wallet_get(context.user_id)
+    local wallet = nk.account_get_id(context.user_id).wallet
 
     return nk.json_encode({
         success = true,
-        coins = wallet.coins
+        coins = wallet.coins or 0
     })
 end
 
 nk.register_rpc(rpc_add_coins, "rpc_add_coins")
+
