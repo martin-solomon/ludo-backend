@@ -160,3 +160,38 @@ local function rpc_update_profile(context, payload)
 end
 
 nk.register_rpc(rpc_update_profile, "rpc_update_profile")
+
+
+-- =========================================================
+-- PHASE-2 (START) : WALLET FETCH (COINS ONLY)
+-- =========================================================
+-- Purpose:
+--   Fetch user's wallet coins
+-- Used by:
+--   - Profile UI
+--   - Shop
+--   - Asset purchase
+--
+-- IMPORTANT:
+--   - Read-only
+--   - Session-based (self only)
+-- =========================================================
+local function rpc_get_wallet(context, payload)
+
+    -- 1. AUTH CHECK
+    if not context or not context.user_id then
+        return nk.json_encode({ error = "unauthorized" })
+    end
+
+    local user_id = context.user_id
+
+    -- 2. FETCH WALLET
+    local wallet = nk.wallet_get(user_id)
+
+    -- 3. SAFE RESPONSE
+    return nk.json_encode({
+        coins = wallet.coins or 0
+    })
+end
+
+nk.register_rpc(rpc_get_wallet, "rpc_get_wallet")
