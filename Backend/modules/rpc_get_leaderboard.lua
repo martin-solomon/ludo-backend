@@ -9,13 +9,14 @@ local function rpc_get_leaderboard(context, payload)
   local limit = input.limit or 20
   local cursor = input.cursor
 
-  local records, new_cursor = nk.leaderboard_records_list(
-    "global_wins",
-    nil,
-    limit,
-    cursor,
-    nil
-  )
+nk.leaderboard_record_write(
+  "global_wins",        -- leaderboard_id
+  user_id,              -- owner_id
+  username or user_id,  -- display name
+  1,                    -- score (wins)
+  nil,                  -- subscore (MUST be number or nil)
+  { wins = 1 }          -- metadata (optional)
+)
 
   return nk.json_encode({
     records = records,
@@ -24,3 +25,4 @@ local function rpc_get_leaderboard(context, payload)
 end
 
 nk.register_rpc(rpc_get_leaderboard, "get_leaderboard")
+
