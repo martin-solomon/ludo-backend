@@ -6,11 +6,7 @@ local rate_limit = require("utils_rate_limit")
 --------------------------------------------------
 local function reward_already_given(user_id, match_id)
   local result = nk.storage_read({
-    {
-      collection = "match_rewards",
-      key = match_id,
-      user_id = user_id
-    }
+    { collection = "match_rewards", key = match_id, user_id = user_id }
   })
   return result and #result > 0
 end
@@ -29,36 +25,21 @@ local function mark_reward_given(user_id, match_id)
 end
 
 --------------------------------------------------
--- CORE APPLY REWARDS (ONLINE MATCH ONLY)
+-- APPLY ONLINE MATCH REWARDS
 --------------------------------------------------
 local function apply_rewards(user_id, rewards, match_id)
-  if not match_id then
-    nk.logger_error("apply_rewards blocked: missing match_id")
-    return nil
-  end
-
-  if reward_already_given(user_id, match_id) then
-    nk.logger_warn("Duplicate reward blocked | user=" .. user_id)
+  if not match_id or reward_already_given(user_id, match_id) then
     return nil
   end
 
   local objects = nk.storage_read({
-    {
-      collection = "profile",
-      key = "player",
-      user_id = user_id
-    }
+    { collection = "profile", key = "player", user_id = user_id }
   })
-
-  if not objects or #objects == 0 then
-    return nil
-  end
+  if not objects or #objects == 0 then return nil end
 
   local profile = objects[1].value
 
-  --------------------------------------------------
-  -- PROFILE UPDATES
-  --------------------------------------------------
+  -- Update profile stats
   profile.coins = math.max(0, (profile.coins or 0) + (rewards.coins or 0))
   profile.xp = (profile.xp or 0) + (rewards.xp or 0)
   profile.wins = (profile.wins or 0) + 1
@@ -79,60 +60,28 @@ local function apply_rewards(user_id, rewards, match_id)
   mark_reward_given(user_id, match_id)
 
   --------------------------------------------------
-  -- UPDATE GLOBAL WINS LEADERBOARD
+  -- ✅ UPDATE GLOBAL WINS LEADERBOARD
   --------------------------------------------------
-  local username = profile.username or user_id
-
   nk.leaderboard_record_write(
     "global_wins",
     user_id,
-    username,
-    1,                -- increment by 1 win
-    { wins = true }
+    profile.username or user_id,
+    1,
+    { wins = profile.wins }
   )
-
-  --------------------------------------------------
-  -- ECONOMY AUDIT LOG
-  --------------------------------------------------
-  nk.storage_write({
-    {
-      collection = "economy_log",
-      key = nk.uuid_v4(),
-      user_id = user_id,
-      value = {
-        source = "match_reward",
-        match_id = match_id,
-        coins_delta = rewards.coins or 0,
-        xp_delta = rewards.xp or 0,
-        timestamp = os.time()
-      },
-      permission_read = 0,
-      permission_write = 0
-    }
-  })
 
   return profile
 end
 
 --------------------------------------------------
--- RPC (TESTING ONLY)
+-- RPC (TEST ONLY)
 --------------------------------------------------
 local function apply_match_rewards_rpc(context, payload)
   if not context.user_id then
     return nk.json_encode({ error = "unauthorized" }), 401
   end
 
-  local ok, reason = rate_limit.check(context, "apply_match_rewards", 2)
-  if not ok then
-    return nk.json_encode({ error = reason }), 429
-  end
-
   local input = nk.json_decode(payload or "{}")
-
-  if not input.user_id or not input.match_id then
-    return nk.json_encode({ error = "missing_params" }), 400
-  end
-
   local profile = apply_rewards(
     input.user_id,
     { coins = input.coins or 0, xp = input.xp or 0 },
@@ -147,3 +96,4 @@ local function apply_match_rewards_rpc(context, payload)
 end
 
 nk.register_rpc(apply_match_rewards_rpc, "apply_match_rewards")
+return apply_rewards
