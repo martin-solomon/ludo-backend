@@ -4,34 +4,8 @@
 
 local nk = require("nakama")
 
-------------------------------------------------
--- GLOBAL WINS LEADERBOARD (ONCE)
-------------------------------------------------
--- Purpose:
---   - Rank players by ONLINE match wins
---   - Higher wins = higher rank
---   - Persistent across restarts
---   - Auto-sorted & paginated by Nakama
---
--- IMPORTANT:
---   - Records are updated ONLY from online match end logic
---   - No frontend writes
-------------------------------------------------
-nk.register_leaderboard(
-  "global_wins",      -- leaderboard id
-  false,              -- authoritative (server-controlled)
-  "desc",             -- higher wins rank higher
-  "incr",             -- wins only increase
-  nil,                -- no reset (lifetime leaderboard)
-  { "wins" }          -- metadata fields (optional)
-)
-
-------------------------------------------------
 -- 0) Optional helpers (non-fatal)
-------------------------------------------------
-pcall(function()
-  require("main_helpers")
-end)
+pcall(function() require("main_helpers") end)
 
 -- Helper: safely require a module and log any error without crashing startup.
 local function safe_require(name)
@@ -45,10 +19,9 @@ local function safe_require(name)
 end
 
 ------------------------------------------------
--- 1) Low-level helpers (loaded FIRST)
+-- 1) Low-level helpers
 ------------------------------------------------
 safe_require("utils_rpc")
-safe_require("inventory_helper")
 
 ------------------------------------------------
 -- 2) Account / profile lifecycle RPCs
@@ -89,6 +62,15 @@ for _, m in ipairs(rpc_late) do
 end
 
 ------------------------------------------------
--- 5) Startup confirmation
+-- 5) ✅ LEADERBOARD-RELATED MODULES (ONLY ADDITION)
+------------------------------------------------
+-- Updates wins + leaderboard after ONLINE match
+safe_require("apply_match_rewards")
+
+-- Fetch leaderboard for frontend
+safe_require("rpc_get_leaderboard")
+
+------------------------------------------------
+-- 6) Startup confirmation
 ------------------------------------------------
 nk.logger_info("main.lua loaded: runtime modules required and RPCs registered.")
