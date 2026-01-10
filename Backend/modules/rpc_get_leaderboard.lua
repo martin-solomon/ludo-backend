@@ -10,9 +10,8 @@ local function rpc_get_leaderboard(context, payload)
   end
 
   local input = nk.json_decode(payload or "{}")
-
-  local cursor = input.cursor or nil
   local limit = input.limit or 20
+  local cursor = input.cursor
 
   local records, new_cursor = nk.leaderboard_records_list(
     "global_wins",
