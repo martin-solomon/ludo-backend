@@ -1,10 +1,6 @@
 local nk = require("nakama")
 
--- =========================================================
--- BOSS DAY-3 : WINS LEADERBOARD FETCH
--- =========================================================
 local function rpc_get_leaderboard(context, payload)
-
   if not context or not context.user_id then
     return nk.json_encode({ error = "unauthorized" }), 401
   end
