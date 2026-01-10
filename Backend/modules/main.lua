@@ -4,7 +4,31 @@
 
 local nk = require("nakama")
 
+------------------------------------------------
+-- GLOBAL WINS LEADERBOARD (ONCE)
+------------------------------------------------
+-- Purpose:
+--   - Rank players by ONLINE match wins
+--   - Higher wins = higher rank
+--   - Persistent across restarts
+--   - Auto-sorted & paginated by Nakama
+--
+-- IMPORTANT:
+--   - Records are updated ONLY from online match end logic
+--   - No frontend writes
+------------------------------------------------
+nk.register_leaderboard(
+  "global_wins",      -- leaderboard id
+  false,              -- authoritative (server-controlled)
+  "desc",             -- higher wins rank higher
+  "incr",             -- wins only increase
+  nil,                -- no reset (lifetime leaderboard)
+  { "wins" }          -- metadata fields (optional)
+)
+
+------------------------------------------------
 -- 0) Optional helpers (non-fatal)
+------------------------------------------------
 pcall(function()
   require("main_helpers")
 end)
@@ -13,7 +37,6 @@ end)
 local function safe_require(name)
   local ok, result = pcall(require, name)
   if not ok then
-    -- result contains the error message when pcall fails
     nk.logger_error("main.lua: require '" .. name .. "' failed: " .. tostring(result))
     return nil, result
   end
@@ -24,10 +47,7 @@ end
 ------------------------------------------------
 -- 1) Low-level helpers (loaded FIRST)
 ------------------------------------------------
--- Core RPC utilities
 safe_require("utils_rpc")
-
--- 🔒 Inventory helper (NEW – required for assets system)
 safe_require("inventory_helper")
 
 ------------------------------------------------
@@ -47,9 +67,6 @@ end
 
 ------------------------------------------------
 -- 3) Match handler
--- IMPORTANT:
--- ludo_match.lua RETURNS the match table
--- Nakama auto-registers it
 ------------------------------------------------
 local match_mod, match_err = safe_require("ludo_match")
 if not match_mod then
