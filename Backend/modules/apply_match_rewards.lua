@@ -2,7 +2,7 @@ local nk = require("nakama")
 local rate_limit = require("utils_rate_limit")
 
 --------------------------------------------------
--- DUPLICATE REWARD PREVENTION
+-- DUPLICATE PROTECTION
 --------------------------------------------------
 local function reward_already_given(user_id, match_id)
   local result = nk.storage_read({
@@ -39,7 +39,6 @@ local function apply_rewards(user_id, rewards, match_id)
 
   local profile = objects[1].value
 
-  -- Update profile stats
   profile.coins = math.max(0, (profile.coins or 0) + (rewards.coins or 0))
   profile.xp = (profile.xp or 0) + (rewards.xp or 0)
   profile.wins = (profile.wins or 0) + 1
@@ -60,21 +59,23 @@ local function apply_rewards(user_id, rewards, match_id)
   mark_reward_given(user_id, match_id)
 
   --------------------------------------------------
-  -- ✅ UPDATE GLOBAL WINS LEADERBOARD
+  -- SAFE LEADERBOARD UPDATE
   --------------------------------------------------
-  nk.leaderboard_record_write(
-    "global_wins",
-    user_id,
-    profile.username or user_id,
-    1,
-    { wins = profile.wins }
-  )
+  pcall(function()
+    nk.leaderboard_record_write(
+      "global_wins",
+      user_id,
+      profile.username or user_id,
+      1,
+      { wins = true }
+    )
+  end)
 
   return profile
 end
 
 --------------------------------------------------
--- RPC (TEST ONLY)
+-- TEST RPC
 --------------------------------------------------
 local function apply_match_rewards_rpc(context, payload)
   if not context.user_id then
@@ -82,6 +83,7 @@ local function apply_match_rewards_rpc(context, payload)
   end
 
   local input = nk.json_decode(payload or "{}")
+
   local profile = apply_rewards(
     input.user_id,
     { coins = input.coins or 0, xp = input.xp or 0 },
