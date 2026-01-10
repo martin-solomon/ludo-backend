@@ -29,7 +29,7 @@ local function mark_reward_given(user_id, match_id)
 end
 
 --------------------------------------------------
--- CORE APPLY REWARDS (MATCH ONLY)
+-- CORE APPLY REWARDS (ONLINE MATCH ONLY)
 --------------------------------------------------
 local function apply_rewards(user_id, rewards, match_id)
   if not match_id then
@@ -56,9 +56,11 @@ local function apply_rewards(user_id, rewards, match_id)
 
   local profile = objects[1].value
 
-  -- 🔐 WALLET UPDATE (STEP-1 SAFETY)
+  --------------------------------------------------
+  -- PROFILE UPDATES
+  --------------------------------------------------
   profile.coins = (profile.coins or 0) + (rewards.coins or 0)
-  profile.coins = math.max(0, profile.coins) -- ✅ CLAMP: WALLET CAN NEVER GO NEGATIVE
+  profile.coins = math.max(0, profile.coins)
 
   profile.xp = (profile.xp or 0) + (rewards.xp or 0)
   profile.wins = (profile.wins or 0) + 1
@@ -78,7 +80,23 @@ local function apply_rewards(user_id, rewards, match_id)
 
   mark_reward_given(user_id, match_id)
 
-  -- 🔒 ECONOMY TRANSACTION LOG (AUDIT ONLY)
+  --------------------------------------------------
+  -- UPDATE GLOBAL WINS LEADERBOARD
+  -- ONLINE MATCHES ONLY
+  --------------------------------------------------
+  local username = profile.username or user_id
+
+  nk.leaderboard_record_write(
+    "global_wins",     -- leaderboard id
+    user_id,           -- owner
+    username,          -- display name
+    1,                 -- increment wins by 1
+    { wins = true }    -- metadata (optional)
+  )
+
+  --------------------------------------------------
+  -- ECONOMY AUDIT LOG (READ-ONLY)
+  --------------------------------------------------
   nk.storage_write({
     {
       collection = "economy_log",
@@ -132,4 +150,5 @@ local function apply_match_rewards_rpc(context, payload)
 end
 
 nk.register_rpc(apply_match_rewards_rpc, "apply_match_rewards")
+
 return apply_rewards
