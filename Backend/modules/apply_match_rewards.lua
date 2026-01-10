@@ -58,18 +58,27 @@ local function apply_rewards(user_id, rewards, match_id)
 
   mark_reward_given(user_id, match_id)
 
-  --------------------------------------------------
-  -- SAFE LEADERBOARD UPDATE
-  --------------------------------------------------
-  pcall(function()
-    nk.leaderboard_record_write(
-      "global_wins",
-      user_id,
-      profile.username or user_id,
-      1,
-      { wins = true }
-    )
-  end)
+--------------------------------------------------
+-- LEADERBOARD UPDATE (LEVEL FIRST, THEN WINS)
+--------------------------------------------------
+local level = profile.level or 1
+local wins  = profile.wins or 0
+
+local leaderboard_score = (level * 1000000) + wins
+
+pcall(function()
+  nk.leaderboard_record_write(
+    "global_wins",
+    user_id,
+    profile.username or user_id,
+    leaderboard_score,                 -- ✅ composite score
+    {
+      level = level,
+      wins = wins,
+      avatar_id = profile.avatar_id or "default"
+    }
+  )
+end)
 
   return profile
 end
@@ -99,3 +108,4 @@ end
 
 nk.register_rpc(apply_match_rewards_rpc, "apply_match_rewards")
 return apply_rewards
+
