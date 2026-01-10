@@ -216,4 +216,24 @@ local function rpc_add_coins(context, payload)
     end
 
     local data = nk.json_decode(payload or "{}")
-    local amount
+    local amount = tonumber(data.amount)
+
+    if not amount or amount <= 0 then
+        return nk.json_encode({ error = "invalid_amount" })
+    end
+
+    nk.wallet_update(
+        context.user_id,
+        { coins = amount },
+        { reason = "match_reward" }
+    )
+
+    local wallet = nk.account_get_id(context.user_id).wallet
+
+    return nk.json_encode({
+        success = true,
+        coins = wallet.coins or 0
+    })
+end
+
+nk.register_rpc(rpc_add_coins, "rpc_add_coins")
