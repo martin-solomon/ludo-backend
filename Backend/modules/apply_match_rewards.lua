@@ -59,9 +59,7 @@ local function apply_rewards(user_id, rewards, match_id)
   --------------------------------------------------
   -- PROFILE UPDATES
   --------------------------------------------------
-  profile.coins = (profile.coins or 0) + (rewards.coins or 0)
-  profile.coins = math.max(0, profile.coins)
-
+  profile.coins = math.max(0, (profile.coins or 0) + (rewards.coins or 0))
   profile.xp = (profile.xp or 0) + (rewards.xp or 0)
   profile.wins = (profile.wins or 0) + 1
   profile.matches_played = (profile.matches_played or 0) + 1
@@ -82,20 +80,19 @@ local function apply_rewards(user_id, rewards, match_id)
 
   --------------------------------------------------
   -- UPDATE GLOBAL WINS LEADERBOARD
-  -- ONLINE MATCHES ONLY
   --------------------------------------------------
   local username = profile.username or user_id
 
   nk.leaderboard_record_write(
-    "global_wins",     -- leaderboard id
-    user_id,           -- owner
-    username,          -- display name
-    1,                 -- increment wins by 1
-    { wins = true }    -- metadata (optional)
+    "global_wins",
+    user_id,
+    username,
+    1,                -- increment by 1 win
+    { wins = true }
   )
 
   --------------------------------------------------
-  -- ECONOMY AUDIT LOG (READ-ONLY)
+  -- ECONOMY AUDIT LOG
   --------------------------------------------------
   nk.storage_write({
     {
@@ -150,5 +147,3 @@ local function apply_match_rewards_rpc(context, payload)
 end
 
 nk.register_rpc(apply_match_rewards_rpc, "apply_match_rewards")
-
-return apply_rewards
