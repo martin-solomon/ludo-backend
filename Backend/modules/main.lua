@@ -70,6 +70,9 @@ safe_require("apply_match_rewards")
 -- Fetch leaderboard for frontend
 safe_require("rpc_get_leaderboard")
 
+safe_require("rpc_dev_init_leaderboard")
+
+
 ------------------------------------------------
 -- 6) Startup confirmation
 ------------------------------------------------
