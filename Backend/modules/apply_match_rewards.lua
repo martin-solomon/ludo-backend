@@ -1,5 +1,6 @@
 local nk = require("nakama")
 local rate_limit = require("utils_rate_limit")
+local daily_progress = require("daily_task_progress") -- ✅ ADDED
 
 --------------------------------------------------
 -- DUPLICATE PROTECTION
@@ -60,6 +61,9 @@ local function apply_rewards(user_id, rewards, match_id)
   })
 
   mark_reward_given(user_id, match_id)
+
+  -- ✅ DAILY TASK: MATCH WIN (ADDED)
+  daily_progress.increment(user_id, "win_match", 1)
 
   --------------------------------------------------
   -- ✅ LEADERBOARD UPDATE (LEVEL → WINS)
