@@ -2,191 +2,115 @@ local nk = require("nakama")
 local rate_limit = require("utils_rate_limit")
 
 --------------------------------------------------
--- DUPLICATE REWARD PROTECTION
--- Prevents double rewards for same match
+-- DUPLICATE PROTECTION
 --------------------------------------------------
 local function reward_already_given(user_id, match_id)
-    local result = nk.storage_read({
-        {
-            collection = "match_rewards",
-            key = match_id,
-            user_id = user_id
-        }
-    })
-    return result and #result > 0
+  local result = nk.storage_read({
+    { collection = "match_rewards", key = match_id, user_id = user_id }
+  })
+  return result and #result > 0
 end
 
 local function mark_reward_given(user_id, match_id)
-    nk.storage_write({
-        {
-            collection = "match_rewards",
-            key = match_id,
-            user_id = user_id,
-            value = { given_at = os.time() },
-            permission_read = 0,
-            permission_write = 0
-        }
-    })
+  nk.storage_write({
+    {
+      collection = "match_rewards",
+      key = match_id,
+      user_id = user_id,
+      value = { given_at = os.time() },
+      permission_read = 0,
+      permission_write = 0
+    }
+  })
 end
 
 --------------------------------------------------
--- CORE REWARD APPLICATION (ONLINE MATCH ONLY)
+-- APPLY ONLINE MATCH REWARDS
 --------------------------------------------------
 local function apply_rewards(user_id, rewards, match_id)
-    if not user_id or not match_id then
-        nk.logger_error("apply_rewards blocked: missing user_id or match_id")
-        return nil
-    end
+  if not match_id or reward_already_given(user_id, match_id) then
+    return nil
+  end
 
-    -- Duplicate protection
-    if reward_already_given(user_id, match_id) then
-        nk.logger_warn("Duplicate reward blocked | user=" .. user_id)
-        return nil
-    end
+  local objects = nk.storage_read({
+    { collection = "profile", key = "player", user_id = user_id }
+  })
+  if not objects or #objects == 0 then return nil end
 
-    --------------------------------------------------
-    -- LOAD PROFILE
-    --------------------------------------------------
-    local objects = nk.storage_read({
-        {
-            collection = "profile",
-            key = "player",
-            user_id = user_id
-        }
-    })
+  local profile = objects[1].value
 
-    if not objects or #objects == 0 then
-        nk.logger_error("Profile missing for user " .. user_id)
-        return nil
-    end
+  --------------------------------------------------
+  -- PROFILE UPDATES
+  --------------------------------------------------
+  profile.coins = math.max(0, (profile.coins or 0) + (rewards.coins or 0))
+  profile.xp = (profile.xp or 0) + (rewards.xp or 0)
+  profile.wins = (profile.wins or 0) + 1
+  profile.matches_played = (profile.matches_played or 0) + 1
+  profile.level = math.floor(profile.xp / 100) + 1
 
-    local profile = objects[1].value or {}
+  nk.storage_write({
+    {
+      collection = "profile",
+      key = "player",
+      user_id = user_id,
+      value = profile,
+      permission_read = 1,
+      permission_write = 0
+    }
+  })
 
-    --------------------------------------------------
-    -- APPLY GAME REWARDS
-    --------------------------------------------------
-    local coins_delta = rewards.coins or 0
-    local xp_delta    = rewards.xp or 0
+  mark_reward_given(user_id, match_id)
 
-    profile.coins = math.max(0, (profile.coins or 0) + coins_delta)
-    profile.xp = (profile.xp or 0) + xp_delta
-    profile.wins = (profile.wins or 0) + 1
-    profile.matches_played = (profile.matches_played or 0) + 1
+  --------------------------------------------------
+  -- ✅ LEADERBOARD UPDATE (LEVEL → WINS)
+  --------------------------------------------------
+  local level = profile.level or 1
+  local wins  = profile.wins or 0
 
-    -- Level calculation (simple, safe)
-    profile.level = math.floor(profile.xp / 100) + 1
+  -- Composite score (LEVEL dominates WINS)
+  local score = (level * 1000000) + wins
 
-    --------------------------------------------------
-    -- SAVE PROFILE
-    --------------------------------------------------
-    nk.storage_write({
-        {
-            collection = "profile",
-            key = "player",
-            user_id = user_id,
-            value = profile,
-            permission_read = 1,
-            permission_write = 0
-        }
-    })
+  pcall(function()
+    nk.leaderboard_record_write(
+      "global_rank",
+      user_id,
+      score,      -- MUST be number
+      0,
+      {
+        level = level,
+        wins = wins,
+        avatar_id = profile.avatar_id or "default",
+        display_name = profile.display_name or "Player"
+      }
+    )
+  end)
 
-    mark_reward_given(user_id, match_id)
-
-    --------------------------------------------------
-    -- LEADERBOARD UPDATE
-    -- Priority:
-    --   1) Higher LEVEL
-    --   2) Higher WINS
-    --
-    -- Composite score approach (safe & fast)
-    --------------------------------------------------
-    local level = profile.level or 1
-    local wins  = profile.wins or 0
-
-    -- Level dominates wins completely
-    local leaderboard_score = (level * 1_000_000) + wins
-
-    -- Never crash match flow due to leaderboard
-    pcall(function()
-        nk.leaderboard_record_write(
-            "global_wins",
-            user_id,
-            profile.username or user_id,
-            leaderboard_score,
-            {
-                level = level,
-                wins = wins,
-                avatar_id = profile.avatar_id or "default"
-            }
-        )
-    end)
-
-    --------------------------------------------------
-    -- ECONOMY AUDIT LOG (OPTIONAL, BUT RECOMMENDED)
-    --------------------------------------------------
-    nk.storage_write({
-        {
-            collection = "economy_log",
-            key = nk.uuid_v4(),
-            user_id = user_id,
-            value = {
-                source = "online_match_reward",
-                match_id = match_id,
-                coins_delta = coins_delta,
-                xp_delta = xp_delta,
-                level = profile.level,
-                timestamp = os.time()
-            },
-            permission_read = 0,
-            permission_write = 0
-        }
-    })
-
-    return profile
+  return profile
 end
 
 --------------------------------------------------
--- TEST / ADMIN RPC (OPTIONAL – KEEP FOR NOW)
--- Can be removed after full match flow is live
+-- TEST RPC (DEV ONLY)
 --------------------------------------------------
 local function apply_match_rewards_rpc(context, payload)
-    if not context.user_id then
-        return nk.json_encode({ error = "unauthorized" }), 401
-    end
+  if not context.user_id then
+    return nk.json_encode({ error = "unauthorized" }), 401
+  end
 
-    local ok, reason = rate_limit.check(context, "apply_match_rewards", 2)
-    if not ok then
-        return nk.json_encode({ error = reason }), 429
-    end
+  local input = nk.json_decode(payload or "{}")
 
-    local input = nk.json_decode(payload or "{}")
+  local profile = apply_rewards(
+    input.user_id,
+    { coins = input.coins or 0, xp = input.xp or 0 },
+    input.match_id
+  )
 
-    if not input.user_id or not input.match_id then
-        return nk.json_encode({ error = "missing_params" }), 400
-    end
+  if not profile then
+    return nk.json_encode({ success = false })
+  end
 
-    local profile = apply_rewards(
-        input.user_id,
-        {
-            coins = input.coins or 0,
-            xp = input.xp or 0
-        },
-        input.match_id
-    )
-
-    if not profile then
-        return nk.json_encode({ success = false })
-    end
-
-    return nk.json_encode({
-        success = true,
-        profile = profile
-    })
+  return nk.json_encode({ success = true, profile = profile })
 end
 
 nk.register_rpc(apply_match_rewards_rpc, "apply_match_rewards")
 
---------------------------------------------------
--- EXPORT FOR MATCH HANDLER USE
---------------------------------------------------
 return apply_rewards
