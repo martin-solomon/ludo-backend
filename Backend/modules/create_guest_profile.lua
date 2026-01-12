@@ -1,4 +1,3 @@
--- create_guest_profile.lua
 local nk = require("nakama")
 
 local function trim(s)
@@ -14,22 +13,16 @@ local function create_guest_profile(context, payload)
   local username = trim(data.username or "")
 
   if username == "" then
-    return nk.json_encode({ error = "username is required" })
+    return nk.json_encode({ error = "username_required" })
   end
 
-  -- 🔴 THIS IS THE CRITICAL FIX
   nk.account_update_id(context.user_id, {
     username = username,
-    display_name = username   -- ✅ REQUIRED
+    display_name = username
   })
 
-  -- profile storage (unchanged)
   local objects = nk.storage_read({
-    {
-      collection = "user_profiles",
-      key = "profile",
-      user_id = context.user_id
-    }
+    { collection = "user_profiles", key = "profile", user_id = context.user_id }
   })
 
   if #objects == 0 then
@@ -49,6 +42,10 @@ local function create_guest_profile(context, payload)
     })
   end
 
+  -- ✅ DAILY LOGIN REWARD (ONLY ADDITION)
+  local daily_rewards = require("daily_rewards_logic")
+  daily_rewards.on_login(context.user_id)
+
   return nk.json_encode({
     success = true,
     user_id = context.user_id,
@@ -57,4 +54,3 @@ local function create_guest_profile(context, payload)
 end
 
 nk.register_rpc(create_guest_profile, "create_guest_profile")
-
