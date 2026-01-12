@@ -82,14 +82,21 @@ nk.logger_info("main.lua loaded: runtime modules required and RPCs registered.")
 -- rename
 -----------------------------------------------
 safe_require("rpc_rename_username")
------------------------------------------------
---Assign daily tasks 
------------------------------------------------
-safe_require("daily_login_task")
-safe_require("rpc_get_daily_tasks")
-safe_require("daily_task_progress")
-safe_require("rpc_daily_task_claim")
+------------------------------------------------
+-- DAILY REWARDS (LOGIN REWARDS - WEEKLY)
+------------------------------------------------
+safe_require("daily_rewards_config")
+safe_require("daily_rewards_logic")
+safe_require("rpc_get_daily_rewards")
 safe_require("after_authenticate")
+
+------------------------------------------------
+-- DAILY TASKS (RANDOM TASKS)
+------------------------------------------------
+safe_require("daily_task_catalog")
+safe_require("daily_task_progress")
+safe_require("rpc_get_daily_tasks")
+safe_require("rpc_daily_task_claim")
 
 
 
