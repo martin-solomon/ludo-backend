@@ -1,5 +1,5 @@
 local nk = require("nakama")
-local inventory = require("inventory_helper") -- ✅ ADDED
+local inventory = require("inventory_helper")
 
 local function parse_rpc_payload(payload)
   if payload == nil then return {} end
@@ -26,7 +26,7 @@ local function create_user_rpc(context, payload)
 
   local user_id = context.user_id
 
-  -- 🔹 PROFILE INITIALIZATION
+  -- Profile init
   local profile_value = {
     username = username,
     email = email,
@@ -37,44 +37,36 @@ local function create_user_rpc(context, payload)
     created_at = nk.time() * 1000
   }
 
-  local profile_obj = {
-    collection = "user_profiles",
-    key = user_id,
-    user_id = user_id,
-    value = profile_value,
-    permission_read = 2,
-    permission_write = 0
-  }
-
-  local ok, err = pcall(nk.storage_write, { profile_obj })
-  if not ok then
-    nk.logger_error("create_user: storage_write failed user_id=%s err=%s", tostring(user_id), tostring(err))
-    return nk.json_encode({ error = "storage_write_failed" }), 500
-  end
-
-  -- 🧳 INVENTORY INIT (NEW USERS WITHOUT GUEST)
-  inventory.ensure_inventory(user_id) -- ✅ ADDED
-
-  -- Username index (UNCHANGED)
-  local username_key = string.lower(username)
-  local index_obj = {
-    collection = "user_profiles",
-    key = username_key,
-    user_id = user_id,
-    value = {
-      username = username,
+  nk.storage_write({
+    {
+      collection = "user_profiles",
+      key = user_id,
       user_id = user_id,
-      guest = false
-    },
-    permission_read = 2,
-    permission_write = 0
-  }
+      value = profile_value,
+      permission_read = 2,
+      permission_write = 0
+    }
+  })
 
-  pcall(nk.storage_write, { index_obj })
+  inventory.ensure_inventory(user_id)
 
+  -- Username index
+  nk.storage_write({
+    {
+      collection = "user_profiles",
+      key = string.lower(username),
+      user_id = user_id,
+      value = { username = username, user_id = user_id, guest = false },
+      permission_read = 2,
+      permission_write = 0
+    }
+  })
+
+  -- ✅ DAILY LOGIN REWARD (ONLY ADDITION)
+  local daily_rewards = require("daily_rewards_logic")
+  daily_rewards.on_login(user_id)
 
   return nk.json_encode({ success = true, user_id = user_id })
 end
 
 nk.register_rpc(create_user_rpc, "create_user")
-
