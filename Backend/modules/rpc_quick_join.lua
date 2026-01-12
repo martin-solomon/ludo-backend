@@ -50,11 +50,18 @@ local function quick_join(context, payload)
     return nk.json_encode({ error = "internal_error" })
   end
 
-  -- Try to fetch username from storage profile
+  -- ✅ Fetch public username from profile.display_name
   local username = "Player"
-  local ok3, stored = pcall(nk.storage_read, { { collection = "user_profiles", key = "profile", user_id = context.user_id } })
-  if ok3 and type(stored) == "table" and stored[1] and stored[1].value and stored[1].value.username then
-    username = stored[1].value.username
+  local ok3, stored = pcall(nk.storage_read, {
+    {
+      collection = "profile",
+      key = "data",
+      user_id = context.user_id
+    }
+  })
+
+  if ok3 and type(stored) == "table" and stored[1] and stored[1].value and stored[1].value.display_name then
+    username = stored[1].value.display_name
   end
 
   local playerSeats = {
