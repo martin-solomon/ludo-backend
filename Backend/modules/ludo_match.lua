@@ -3,6 +3,7 @@ local nk = require("nakama")
 
 local apply_rewards = require("apply_match_rewards")
 local update_daily_tasks = require("update_daily_tasks")
+local daily_progress = require("daily_task_progress") -- ✅ ADDED
 
 local M = {}
 
@@ -42,6 +43,10 @@ function M.match_loop(context, dispatcher, tick, state, messages)
       local winner_id = nil
       for _, presence in pairs(state.players) do
         winner_id = presence.user_id
+
+        -- ✅ DAILY TASK: MATCH PLAYED (TIMEOUT CASE)
+        daily_progress.increment(presence.user_id, "play_match", 1)
+
         break
       end
 
@@ -88,7 +93,7 @@ function M.match_loop(context, dispatcher, tick, state, messages)
       local dice = math.random(1, 6)
       state.dice_value = dice
 
-      -- 📅 DAILY PLAY TASK
+      -- 📅 OLD DAILY TASK (UNCHANGED)
       update_daily_tasks(user_id, "play")
 
       dispatcher.broadcast_message(1, nk.json_encode({
@@ -108,12 +113,15 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         state.game_over = true
         state.winner = user_id
 
+        -- ✅ DAILY TASK: MATCH PLAYED (NORMAL WIN CASE)
+        daily_progress.increment(user_id, "play_match", 1)
+
         local rewards = { coins = 100, xp = 50 }
 
         -- 🎁 APPLY REWARDS (SAFE)
         local profile = apply_rewards(user_id, rewards, context.match_id)
 
-        -- 📅 DAILY WIN TASK
+        -- 📅 OLD DAILY WIN TASK (UNCHANGED)
         update_daily_tasks(user_id, "win")
 
         -- 🏆 LEADERBOARD UPDATE (LOCKED)
