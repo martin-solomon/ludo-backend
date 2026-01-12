@@ -49,6 +49,10 @@ local function create_guest_profile(context, payload)
     })
   end
 
+  -- ✅ DAILY LOGIN TASK PROGRESS (ADDED)
+  local daily_progress = require("daily_task_progress")
+  daily_progress.increment(context.user_id, "login", 1)
+
   return nk.json_encode({
     success = true,
     user_id = context.user_id,
