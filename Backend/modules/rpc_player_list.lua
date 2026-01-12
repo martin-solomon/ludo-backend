@@ -23,20 +23,47 @@ local function player_list(context, payload)
     return nk.json_encode({ players = {} })
   end
 
-  -- state.player_seats may not exist in minimal handler; fallback to scanning presences
+  -- Helper: get display name from profile
+  local function get_display_name(user_id)
+    local okp, prof = pcall(nk.storage_read, {
+      {
+        collection = "profile",
+        key = "data",
+        user_id = user_id
+      }
+    })
+
+    if okp and prof and prof[1] and prof[1].value and prof[1].value.display_name then
+      return prof[1].value.display_name
+    end
+
+    return "Player"
+  end
+
+  -- state.player_seats path
   if state.player_seats then
     local list = {}
     for seat, pd in pairs(state.player_seats) do
-      table.insert(list, { userId = pd.user_id, username = pd.username, seat = seat })
+      local username = get_display_name(pd.user_id)
+      table.insert(list, {
+        userId = pd.user_id,
+        username = username,
+        seat = seat
+      })
     end
     return nk.json_encode({ players = list })
   end
 
-  -- Fallback: try reading current presences from match (match.presences)
+  -- Fallback: match presences
   local presences = match.presences or {}
   local players = {}
   for _, p in ipairs(presences) do
-    table.insert(players, { userId = p.user_id, username = p.username, session_id = p.session_id })
+    local username = get_display_name(p.user_id)
+    table.insert(players, {
+      userId = p.user_id,
+      username = username,
+      session_id = p.session_id
+    })
   end
 
   return nk.json_encode({ players = players })
