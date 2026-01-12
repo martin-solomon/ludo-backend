@@ -10,7 +10,7 @@ local function rpc_get_leaderboard(context, payload)
   local cursor = input.cursor
 
   local records, new_cursor = nk.leaderboard_records_list(
-    "ludo_global",   -- 🔥 SAME ID AS WRITE
+    "ludo_global",   -- SAME ID AS WRITE
     nil,
     limit,
     cursor,
@@ -22,8 +22,13 @@ local function rpc_get_leaderboard(context, payload)
   for _, record in ipairs(records or {}) do
     local user_id = record.owner_id
 
+    -- Fetch public profile (display name)
     local objects = nk.storage_read({
-      { collection = "profile", key = "player", user_id = user_id }
+      {
+        collection = "profile",
+        key = "data",
+        user_id = user_id
+      }
     })
 
     local profile = objects and objects[1] and objects[1].value or {}
@@ -31,7 +36,7 @@ local function rpc_get_leaderboard(context, payload)
     table.insert(results, {
       rank = record.rank,
       user_id = user_id,
-      player_name = profile.username or record.username or "Player",
+      player_name = profile.display_name or "Player",
       level = profile.level or 1,
       wins = record.score,
       avatar_id = profile.avatar_id or "default"
