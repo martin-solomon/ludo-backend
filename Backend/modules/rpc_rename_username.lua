@@ -1,38 +1,33 @@
 local nk = require("nakama")
 
 local function rename_username(context, payload)
-    -- Authentication check
+    -- Auth check
     if not context.user_id then
-        nk.error("UNAUTHORIZED", 16)
+        error({ message = "UNAUTHORIZED", code = 16 })
     end
 
-    -- Handle payload correctly (unwrap-safe)
-    local new_username
+    -- Decode payload (unwrap=true safe)
+    local decoded
+    local ok, err = pcall(function()
+        decoded = nk.json_decode(payload)
+    end)
 
-    if type(payload) == "string" and payload ~= "" then
-        local decoded = nk.json_decode(payload)
-        new_username = decoded.username
-    else
-        nk.error("USERNAME_REQUIRED", 3)
+    if not ok or not decoded or not decoded.username then
+        error({ message = "USERNAME_REQUIRED", code = 3 })
     end
 
-    if not new_username or new_username == "" then
-        nk.error("USERNAME_REQUIRED", 3)
-    end
-
-    -- Normalize
-    new_username = string.lower(new_username)
+    local new_username = string.lower(decoded.username)
 
     -- Validation
     if #new_username < 3 or #new_username > 20 then
-        nk.error("USERNAME_LENGTH_INVALID", 3)
+        error({ message = "USERNAME_LENGTH_INVALID", code = 3 })
     end
 
     if not string.match(new_username, "^[a-z0-9_]+$") then
-        nk.error("USERNAME_FORMAT_INVALID", 3)
+        error({ message = "USERNAME_FORMAT_INVALID", code = 3 })
     end
 
-    -- Fetch current account
+    -- Get account
     local account = nk.account_get_id(context.user_id)
 
     -- No-op
@@ -43,8 +38,8 @@ local function rename_username(context, payload)
         })
     end
 
-    -- Update account username
-    local ok, err = pcall(function()
+    -- Update username
+    local update_ok, update_err = pcall(function()
         nk.account_update_id(
             context.user_id,
             new_username,
@@ -57,9 +52,9 @@ local function rename_username(context, payload)
         )
     end)
 
-    if not ok then
-        nk.logger_error("rename_username failed: " .. tostring(err))
-        nk.error("USERNAME_ALREADY_TAKEN", 13)
+    if not update_ok then
+        nk.logger_error("rename_username failed: " .. tostring(update_err))
+        error({ message = "USERNAME_ALREADY_TAKEN", code = 13 })
     end
 
     -- Sync profile mirror
@@ -78,10 +73,3 @@ local function rename_username(context, payload)
 
     return nk.json_encode({
         success = true,
-        username = new_username
-    })
-end
-
-nk.register_rpc(rename_username, "rename_username")
-
-return rename_username
