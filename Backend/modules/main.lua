@@ -85,7 +85,6 @@ safe_require("rpc_rename_username")
 ------------------------------------------------
 -- DAILY REWARDS (LOGIN REWARDS - WEEKLY)
 ------------------------------------------------
-safe_require("daily_rewards_config")
 safe_require("daily_rewards_logic")
 safe_require("rpc_get_daily_rewards")
 safe_require("after_authenticate")
