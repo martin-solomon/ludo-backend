@@ -89,6 +89,8 @@ safe_require("daily_login_task")
 safe_require("rpc_get_daily_tasks")
 safe_require("daily_task_progress")
 safe_require("rpc_daily_task_claim")
+safe_require("after_authenticate")
+
 
 
 
