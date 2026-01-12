@@ -81,5 +81,6 @@ nk.logger_info("main.lua loaded: runtime modules required and RPCs registered.")
 -----------------------------------------------
 -- rename
 -----------------------------------------------
-nk.register_rpc(rename_username, "rename_username")
+safe_require("rpc_rename_username")
+
 
