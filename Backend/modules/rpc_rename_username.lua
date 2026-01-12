@@ -61,9 +61,9 @@ local function rename_username(context, payload)
     end)
 
     if not ok then
-        nk.logger_warn("rename_username failed: " .. tostring(err))
-        error("USERNAME_ALREADY_TAKEN")
-    end
+    nk.logger_error("rename_username real error: " .. tostring(err))
+    error("RENAME_FAILED")
+end
 
     -- Sync profile mirror (NOT authoritative)
     nk.storage_write({
@@ -90,3 +90,4 @@ end
 nk.register_rpc(rename_username, "rename_username")
 
 return rename_username
+
