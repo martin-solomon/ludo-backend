@@ -1,3 +1,4 @@
+-- after_authenticate.lua
 local nk = require("nakama")
 local daily_rewards = require("daily_rewards_logic")
 
@@ -6,7 +7,7 @@ local function after_authenticate(context, payload)
     return
   end
 
-  -- Trigger DAILY REWARDS (first login of the day only)
+  -- Trigger DAILY LOGIN REWARD (once per day)
   daily_rewards.on_login(context.user_id)
 end
 
