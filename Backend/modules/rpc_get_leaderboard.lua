@@ -1,21 +1,5 @@
 local nk = require("nakama")
 
--- ======================================
--- CREATE LEADERBOARD (SAFE, ON STARTUP)
--- ======================================
-nk.leaderboard_create(
-  "global_wins",
-  false,   -- non-authoritative
-  "desc",  -- higher wins rank higher
-  "best",
-  nil,
-  {},
-  false
-)
-
--- ======================================
--- READ LEADERBOARD
--- ======================================
 local function rpc_get_leaderboard(context, payload)
   if not context or not context.user_id then
     return nk.json_encode({ error = "unauthorized" }), 401
@@ -26,7 +10,7 @@ local function rpc_get_leaderboard(context, payload)
   local cursor = input.cursor
 
   local records, new_cursor = nk.leaderboard_records_list(
-    "global_wins",
+    "ludo_global",   -- 🔥 SAME ID AS WRITE
     nil,
     limit,
     cursor,
@@ -42,10 +26,7 @@ local function rpc_get_leaderboard(context, payload)
       { collection = "profile", key = "player", user_id = user_id }
     })
 
-    local profile = {}
-    if objects and #objects > 0 then
-      profile = objects[1].value or {}
-    end
+    local profile = objects and objects[1] and objects[1].value or {}
 
     table.insert(results, {
       rank = record.rank,
@@ -64,25 +45,3 @@ local function rpc_get_leaderboard(context, payload)
 end
 
 nk.register_rpc(rpc_get_leaderboard, "get_leaderboard")
-
--- ======================================
--- WRITE WIN (INCREMENT)
--- ======================================
-local function rpc_submit_win(context, payload)
-  if not context or not context.user_id then
-    return nk.json_encode({ error = "unauthorized" }), 401
-  end
-
-  nk.leaderboard_record_write(
-    "global_wins",
-    context.user_id,
-    1,
-    0,
-    {},
-    "incr"
-  )
-
-  return nk.json_encode({ status = "ok" })
-end
-
-nk.register_rpc(rpc_submit_win, "submit_win")
