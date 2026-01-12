@@ -72,11 +72,12 @@ local function create_user_rpc(context, payload)
 
   pcall(nk.storage_write, { index_obj })
 
-  -- ✅ DAILY LOGIN TASK PROGRESS (ADDED)
-  local daily_progress = require("daily_task_progress")
-  daily_progress.increment(user_id, "login", 1)
+   -- ✅ DAILY LOGIN REWARD (ONLY ADDITION)
+  local daily_rewards = require("daily_rewards_logic")
+  daily_rewards.on_login(context.user_id)
 
   return nk.json_encode({ success = true, user_id = user_id })
 end
 
 nk.register_rpc(create_user_rpc, "create_user")
+
