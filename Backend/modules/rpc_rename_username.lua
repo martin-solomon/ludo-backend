@@ -1,14 +1,12 @@
 local nk = require("nakama")
 
 local function rename_username(context, payload)
-    -- Auth check
     if not context.user_id then
         error({ message = "UNAUTHORIZED", code = 16 })
     end
 
-    -- Decode payload (unwrap=true safe)
     local decoded
-    local ok, err = pcall(function()
+    local ok = pcall(function()
         decoded = nk.json_decode(payload)
     end)
 
@@ -18,7 +16,6 @@ local function rename_username(context, payload)
 
     local new_username = string.lower(decoded.username)
 
-    -- Validation
     if #new_username < 3 or #new_username > 20 then
         error({ message = "USERNAME_LENGTH_INVALID", code = 3 })
     end
@@ -27,10 +24,8 @@ local function rename_username(context, payload)
         error({ message = "USERNAME_FORMAT_INVALID", code = 3 })
     end
 
-    -- Get account
     local account = nk.account_get_id(context.user_id)
 
-    -- No-op
     if account.username == new_username then
         return nk.json_encode({
             success = true,
@@ -38,7 +33,6 @@ local function rename_username(context, payload)
         })
     end
 
-    -- Update username
     local update_ok, update_err = pcall(function()
         nk.account_update_id(
             context.user_id,
@@ -57,7 +51,6 @@ local function rename_username(context, payload)
         error({ message = "USERNAME_ALREADY_TAKEN", code = 13 })
     end
 
-    -- Sync profile mirror
     nk.storage_write({
         {
             collection = "profile",
@@ -73,3 +66,8 @@ local function rename_username(context, payload)
 
     return nk.json_encode({
         success = true,
+        username = new_username
+    })
+end
+
+nk.register_rpc(rename_username, "rename_username")
