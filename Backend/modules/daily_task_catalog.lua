@@ -82,7 +82,7 @@ local DAILY_TASKS = {
     title = "Roll a Six 3 Times",
     type = "roll_six",
     target = 3,
-    reward = { coins = 200 }
+    reward = { coins = 150 }
   },
 
   -- ======================
@@ -100,7 +100,7 @@ local DAILY_TASKS = {
     title = "Play 1 Duo Match",
     type = "play_duo",
     target = 1,
-    reward = { coins = 100 }
+    reward = { coins = 50 }
   },
   {
     id = "play_squad_match",
@@ -143,7 +143,7 @@ local DAILY_TASKS = {
     title = "Send 10 Gifts",
     type = "send_gift",
     target = 10,
-    reward = { coins = 200 }
+    reward = { coins = 150 }
   },
 
   -- ======================
@@ -172,29 +172,30 @@ local DAILY_TASKS = {
     title = "Win a Match Without Capturing",
     type = "win_clean",
     target = 1,
-    reward = { coins = 300 }
+    reward = { coins = 250 }
   },
   {
     id = "finish_with_all_pawns",
     title = "Finish with All Pawns",
     type = "finish_all_pawns",
     target = 1,
-    reward = { coins = 250 }
+    reward = { coins = 150 }
   },
   {
     id = "consecutive_wins_2",
     title = "Win 2 Matches in a Row",
     type = "win_streak",
     target = 2,
-    reward = { coins = 220 }
+    reward = { coins = 180 }
   },
   {
     id = "consecutive_wins_3",
     title = "Win 3 Matches in a Row",
     type = "win_streak",
     target = 3,
-    reward = { coins = 350 }
+    reward = { coins = 110 }
   }
 }
 
 return DAILY_TASKS
+
