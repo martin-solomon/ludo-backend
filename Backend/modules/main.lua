@@ -87,7 +87,7 @@ safe_require("rpc_rename_username")
 ------------------------------------------------
 safe_require("daily_rewards_logic")
 safe_require("rpc_get_daily_rewards")
-safe_require("after_authenticate")
+
 
 ------------------------------------------------
 -- DAILY TASKS (RANDOM TASKS)
