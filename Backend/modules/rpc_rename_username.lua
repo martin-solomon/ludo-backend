@@ -1,26 +1,43 @@
 local nk = require("nakama")
 
+-- =========================================
+-- RPC: rename_username
+-- Purpose:
+--   - Rename Nakama account username
+--   - Enforce global uniqueness (via Nakama)
+--   - Sync profile mirror
+-- =========================================
+
 local function rename_username(context, payload)
-    -- Must be authenticated
+    --  Authentication check
     if not context.user_id then
         error("UNAUTHORIZED")
     end
 
-    -- Decode payload
-    local data = nk.json_decode(payload)
+    --  Decode payload
+    local data = nk.json_decode(payload or "{}")
     local new_username = data.username
 
     if not new_username or new_username == "" then
         error("USERNAME_REQUIRED")
     end
 
-    -- Normalize username (IMPORTANT)
+    --  Normalize username
     new_username = string.lower(new_username)
 
-    -- Get current account
+    -- Optional: basic validation (recommended)
+    if #new_username < 3 or #new_username > 20 then
+        error("USERNAME_LENGTH_INVALID")
+    end
+
+    if not string.match(new_username, "^[a-z0-9_]+$") then
+        error("USERNAME_FORMAT_INVALID")
+    end
+
+    --  Fetch current account
     local account = nk.account_get_id(context.user_id)
 
-    -- Prevent no-op rename
+    --  No-op protection
     if account.username == new_username then
         return nk.json_encode({
             success = true,
@@ -28,11 +45,12 @@ local function rename_username(context, payload)
         })
     end
 
-    -- Try updating ACCOUNT username (this enforces uniqueness)
-    local success, err = pcall(function()
+    -- Update ACCOUNT username
+    -- This is where Nakama enforces uniqueness
+    local ok, err = pcall(function()
         nk.account_update_id(
             context.user_id,
-            new_username,                 -- UNIQUE USERNAME
+            new_username,                 -- authoritative username
             account.display_name,
             account.avatar_url,
             account.lang_tag,
@@ -42,12 +60,12 @@ local function rename_username(context, payload)
         )
     end)
 
-    if not success then
-        -- Nakama throws error if username already exists
+    if not ok then
+        nk.logger_warn("rename_username failed: " .. tostring(err))
         error("USERNAME_ALREADY_TAKEN")
     end
 
-    -- Sync profile mirror (NOT authority)
+    -- Sync profile mirror (NOT authoritative)
     nk.storage_write({
         {
             collection = "profile",
@@ -61,11 +79,14 @@ local function rename_username(context, payload)
         }
     })
 
-    --  Return success
+    --Return success
     return nk.json_encode({
         success = true,
         username = new_username
     })
 end
+
+-- Register RPC
+nk.register_rpc(rename_username, "rename_username")
 
 return rename_username
