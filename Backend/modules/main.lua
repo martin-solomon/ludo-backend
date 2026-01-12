@@ -88,13 +88,6 @@ safe_require("rpc_rename_username")
 safe_require("rpc_get_daily_rewards")
 
 
-------------------------------------------------
--- DAILY TASKS (RANDOM TASKS)
-------------------------------------------------
-safe_require("daily_task_catalog")
-safe_require("daily_task_progress")
-safe_require("rpc_get_daily_tasks")
-safe_require("rpc_daily_task_claim")
 
 
 
