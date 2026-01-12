@@ -1,4 +1,5 @@
 local nk = require("nakama")
+local daily_progress = require("daily_task_progress") -- ✅ ADDED
 
 local function rpc_debug_roll_dice(context, payload)
   if not context.user_id then
@@ -21,6 +22,9 @@ local function rpc_debug_roll_dice(context, payload)
     }),
     context.user_id
   )
+
+  -- ✅ DAILY TASK: DICE ROLL (ADDED)
+  daily_progress.increment(context.user_id, "dice_roll", 1)
 
   return nk.json_encode({ status = "dice_requested" })
 end
