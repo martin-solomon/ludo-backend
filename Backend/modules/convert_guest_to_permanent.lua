@@ -116,9 +116,7 @@ local function convert_guest_to_permanent(context, payload)
   -- -----------------------------------------------------
   inventory.ensure_inventory(user_id)
 
-  -- ✅ DAILY LOGIN TASK PROGRESS (ADDED)
-  local daily_progress = require("daily_task_progress")
-  daily_progress.increment(user_id, "login", 1)
+
 
   -- -----------------------------------------------------
   -- ✅ SUCCESS
@@ -133,3 +131,4 @@ end
 -- 📌 Register RPC
 -- ---------------------------------------------------------
 nk.register_rpc(convert_guest_to_permanent, "convert_guest_to_permanent")
+
