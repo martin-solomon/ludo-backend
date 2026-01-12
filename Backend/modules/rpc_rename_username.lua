@@ -9,10 +9,12 @@ local function error_response(code, message)
 end
 
 local function rename_username(context, payload)
+    -- Auth check
     if not context.user_id then
         return error_response(16, "UNAUTHORIZED")
     end
 
+    -- Decode payload
     local decoded
     local ok = pcall(function()
         decoded = nk.json_decode(payload)
@@ -24,6 +26,7 @@ local function rename_username(context, payload)
 
     local new_username = string.lower(decoded.username)
 
+    -- Validation
     if #new_username < 3 or #new_username > 20 then
         return error_response(3, "USERNAME_LENGTH_INVALID")
     end
@@ -32,39 +35,78 @@ local function rename_username(context, payload)
         return error_response(3, "USERNAME_FORMAT_INVALID")
     end
 
-    local account = nk.account_get_id(context.user_id)
+    local user_id = context.user_id
 
-    if account.username == new_username then
+    -- Read current profile to get old username
+    local profiles = nk.storage_read({
+        {
+            collection = "profile",
+            key = "data",
+            user_id = user_id
+        }
+    })
+
+    local old_username = nil
+    if profiles[1] and profiles[1].value and profiles[1].value.display_name then
+        old_username = profiles[1].value.display_name
+    end
+
+    -- If same name, no-op
+    if old_username == new_username then
         return nk.json_encode({
             success = true,
-            username = account.username
+            username = new_username
         })
     end
 
-    local update_ok, update_err = pcall(function()
-        nk.account_update_id(
-            context.user_id,
-            new_username,
-            account.display_name,
-            account.avatar_url,
-            account.lang_tag,
-            account.location,
-            account.timezone,
-            account.metadata
-        )
-    end)
+    -- Check if new username already exists
+    local existing = nk.storage_read({
+        {
+            collection = "usernames",
+            key = new_username,
+            user_id = nil
+        }
+    })
 
-    if not update_ok then
-        nk.logger_error("rename_username failed: " .. tostring(update_err))
+    if existing[1] then
         return error_response(13, "USERNAME_ALREADY_TAKEN")
     end
 
+    -- Begin rename operation
+    -- 1. Delete old username mapping (if exists)
+    if old_username then
+        nk.storage_delete({
+            {
+                collection = "usernames",
+                key = old_username,
+                user_id = nil
+            }
+        })
+    end
+
+    -- 2. Claim new username
+    nk.storage_write({
+        {
+            collection = "usernames",
+            key = new_username,
+            user_id = nil,
+            value = {
+                user_id = user_id
+            },
+            permission_read = 2,
+            permission_write = 0
+        }
+    })
+
+    -- 3. Update profile display name
     nk.storage_write({
         {
             collection = "profile",
             key = "data",
-            user_id = context.user_id,
-            value = { username = new_username },
+            user_id = user_id,
+            value = {
+                display_name = new_username
+            },
             permission_read = 2,
             permission_write = 0
         }
