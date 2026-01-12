@@ -77,3 +77,9 @@ safe_require("rpc_dev_init_leaderboard")
 -- 6) Startup confirmation
 ------------------------------------------------
 nk.logger_info("main.lua loaded: runtime modules required and RPCs registered.")
+
+-----------------------------------------------
+-- rename
+-----------------------------------------------
+nk.register_rpc(rename_username, "rename_username")
+
