@@ -1,5 +1,6 @@
 local nk = require("nakama")
-local inventory = require("inventory_helper") -- ✅ ADDED
+local inventory = require("inventory_helper")
+local daily_login_rewards = require("daily_login_rewards")
 
 local function parse_rpc_payload(payload)
   if payload == nil then return {} end
@@ -26,7 +27,6 @@ local function create_user_rpc(context, payload)
 
   local user_id = context.user_id
 
-  -- 🔹 PROFILE INITIALIZATION
   local profile_value = {
     username = username,
     email = email,
@@ -48,14 +48,16 @@ local function create_user_rpc(context, payload)
 
   local ok, err = pcall(nk.storage_write, { profile_obj })
   if not ok then
-    nk.logger_error("create_user: storage_write failed user_id=%s err=%s", tostring(user_id), tostring(err))
+    nk.logger_error(
+      "create_user: storage_write failed user_id=%s err=%s",
+      tostring(user_id),
+      tostring(err)
+    )
     return nk.json_encode({ error = "storage_write_failed" }), 500
   end
 
-  -- 🧳 INVENTORY INIT (NEW USERS WITHOUT GUEST)
-  inventory.ensure_inventory(user_id) -- ✅ ADDED
+  inventory.ensure_inventory(user_id)
 
-  -- Username index (UNCHANGED)
   local username_key = string.lower(username)
   local index_obj = {
     collection = "user_profiles",
@@ -71,6 +73,9 @@ local function create_user_rpc(context, payload)
   }
 
   pcall(nk.storage_write, { index_obj })
+
+  -- 🔹 DAILY LOGIN REWARD (ADDED)
+  daily_login_rewards.process_login(context)
 
   return nk.json_encode({ success = true, user_id = user_id })
 end
