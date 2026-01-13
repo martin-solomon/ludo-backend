@@ -1,7 +1,7 @@
 local nk = require("nakama")
 local rate_limit = require("utils_rate_limit")
 
--- 🟩 DAILY TASKS (NEW – REQUIRED)
+-- 🟩 DAILY TASKS
 local daily_tasks = require("update_daily_tasks")
 
 --------------------------------------------------
@@ -28,13 +28,16 @@ local function mark_reward_given(user_id, match_id)
 end
 
 --------------------------------------------------
--- APPLY ONLINE MATCH REWARDS
+-- APPLY ONLINE MATCH REWARDS (AUTHORITATIVE)
 --------------------------------------------------
 local function apply_rewards(user_id, rewards, match_id)
   if not match_id or reward_already_given(user_id, match_id) then
     return nil
   end
 
+  --------------------------------------------------
+  -- READ PROFILE (NO COINS HERE)
+  --------------------------------------------------
   local objects = nk.storage_read({
     { collection = "profile", key = "player", user_id = user_id }
   })
@@ -43,10 +46,11 @@ local function apply_rewards(user_id, rewards, match_id)
   local profile = objects[1].value
 
   --------------------------------------------------
-  -- PROFILE UPDATES
+  -- UPDATE NON-ECONOMY STATS
   --------------------------------------------------
-  profile.coins = math.max(0, (profile.coins or 0) + (rewards.coins or 0))
-  profile.xp = (profile.xp or 0) + (rewards.xp or 0)
+  local xp_gain = rewards.xp or 0
+
+  profile.xp = (profile.xp or 0) + xp_gain
   profile.wins = (profile.wins or 0) + 1
   profile.matches_played = (profile.matches_played or 0) + 1
   profile.level = math.floor(profile.xp / 100) + 1
@@ -63,31 +67,36 @@ local function apply_rewards(user_id, rewards, match_id)
   })
 
   --------------------------------------------------
-  -- 🟩 DAILY TASK GAMEPLAY HOOKS (NEW)
-  -- Purpose: Update match-based daily tasks
+  -- 💰 WALLET UPDATE (ONLY SOURCE OF COINS)
   --------------------------------------------------
+  local coin_reward = rewards.coins or 0
+  if coin_reward > 0 then
+    nk.wallet_update(
+      user_id,
+      { coins = coin_reward },
+      { reason = "match_reward", match_id = match_id },
+      false
+    )
+  end
 
-  -- Match was played and completed
+  --------------------------------------------------
+  -- 🟩 DAILY TASK GAMEPLAY HOOKS
+  --------------------------------------------------
   daily_tasks.update(user_id, "match_played", 1)
   daily_tasks.update(user_id, "match_complete", 1)
-
-  -- Match ended cleanly (reward implies no quit)
   daily_tasks.update(user_id, "match_no_quit", 1)
-
-  -- Player won the match
   daily_tasks.update(user_id, "match_win", 1)
 
   --------------------------------------------------
-  -- FINALIZE
+  -- FINALIZE (DUPLICATE LOCK)
   --------------------------------------------------
   mark_reward_given(user_id, match_id)
 
   --------------------------------------------------
-  -- ✅ LEADERBOARD UPDATE (LEVEL → WINS)
+  -- 🏆 LEADERBOARD UPDATE
   --------------------------------------------------
   local level = profile.level or 1
   local wins  = profile.wins or 0
-
   local score = (level * 1000000) + wins
 
   pcall(function()
@@ -109,7 +118,7 @@ local function apply_rewards(user_id, rewards, match_id)
 end
 
 --------------------------------------------------
--- TEST RPC (DEV ONLY)
+-- DEV TEST RPC (SAFE)
 --------------------------------------------------
 local function apply_match_rewards_rpc(context, payload)
   if not context.user_id then
@@ -128,7 +137,7 @@ local function apply_match_rewards_rpc(context, payload)
     return nk.json_encode({ success = false })
   end
 
-  return nk.json_encode({ success = true, profile = profile })
+  return nk.json_encode({ success = true })
 end
 
 nk.register_rpc(apply_match_rewards_rpc, "apply_match_rewards")
