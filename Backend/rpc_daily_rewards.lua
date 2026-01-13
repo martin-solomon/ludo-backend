@@ -199,3 +199,10 @@ return {
   fetch = daily_rewards_fetch,
   claim = daily_rewards_claim
 }
+--------------------------------------------------
+-- RPC REGISTRATION (REQUIRED)
+--------------------------------------------------
+
+nk.register_rpc(daily_rewards_fetch, "daily_rewards.fetch")
+nk.register_rpc(daily_rewards_claim, "daily_rewards.claim")
+
