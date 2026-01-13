@@ -1,6 +1,9 @@
 local nk = require("nakama")
 local rate_limit = require("utils_rate_limit")
 
+-- 🟩 DAILY TASKS (NEW – REQUIRED)
+local daily_tasks = require("update_daily_tasks")
+
 --------------------------------------------------
 -- DUPLICATE PROTECTION
 --------------------------------------------------
@@ -59,6 +62,24 @@ local function apply_rewards(user_id, rewards, match_id)
     }
   })
 
+  --------------------------------------------------
+  -- 🟩 DAILY TASK GAMEPLAY HOOKS (NEW)
+  -- Purpose: Update match-based daily tasks
+  --------------------------------------------------
+
+  -- Match was played and completed
+  daily_tasks.update(user_id, "match_played", 1)
+  daily_tasks.update(user_id, "match_complete", 1)
+
+  -- Match ended cleanly (reward implies no quit)
+  daily_tasks.update(user_id, "match_no_quit", 1)
+
+  -- Player won the match
+  daily_tasks.update(user_id, "match_win", 1)
+
+  --------------------------------------------------
+  -- FINALIZE
+  --------------------------------------------------
   mark_reward_given(user_id, match_id)
 
   --------------------------------------------------
@@ -67,14 +88,13 @@ local function apply_rewards(user_id, rewards, match_id)
   local level = profile.level or 1
   local wins  = profile.wins or 0
 
-  -- Composite score (LEVEL dominates WINS)
   local score = (level * 1000000) + wins
 
   pcall(function()
     nk.leaderboard_record_write(
       "global_rank",
       user_id,
-      score,      -- MUST be number
+      score,
       0,
       {
         level = level,
