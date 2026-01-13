@@ -1,6 +1,5 @@
 local nk = require("nakama")
 local inventory = require("inventory_helper")
-local daily_login_rewards = require("daily_login_rewards")
 
 local function parse_rpc_payload(payload)
   if payload == nil then return {} end
@@ -13,6 +12,10 @@ local function parse_rpc_payload(payload)
 end
 
 local function create_user_rpc(context, payload)
+  if not context or not context.user_id then
+    return nk.json_encode({ error = "no_session" }), 401
+  end
+
   local input = parse_rpc_payload(payload)
   local username = input.username or ""
   local email = input.email or ""
@@ -21,62 +24,76 @@ local function create_user_rpc(context, payload)
     return nk.json_encode({ error = "username_required" }), 400
   end
 
-  if not context or not context.user_id then
-    return nk.json_encode({ error = "no_session" }), 401
-  end
-
   local user_id = context.user_id
 
-  local profile_value = {
+  --------------------------------------------------
+  -- 1️⃣ FORCE ACCOUNT NAME (FIXES “Player” ISSUE)
+  --------------------------------------------------
+  nk.account_update_id(user_id, {
     username = username,
-    email = email,
-    guest = false,
-    coins = 1000,
-    xp = 0,
-    level = 1,
-    created_at = nk.time() * 1000
-  }
+    display_name = username
+  })
 
+  --------------------------------------------------
+  -- 2️⃣ INIT WALLET (AUTHORITATIVE)
+  --------------------------------------------------
+  nk.wallet_update(
+    user_id,
+    { coins = 1000 },
+    { reason = "initial_balance" },
+    true
+  )
+
+  --------------------------------------------------
+  -- 3️⃣ STORE PROFILE METADATA (NOT ECONOMY)
+  --------------------------------------------------
   local profile_obj = {
     collection = "user_profiles",
     key = user_id,
     user_id = user_id,
-    value = profile_value,
-    permission_read = 2,
-    permission_write = 0
-  }
-
-  local ok, err = pcall(nk.storage_write, { profile_obj })
-  if not ok then
-    nk.logger_error(
-      "create_user: storage_write failed user_id=%s err=%s",
-      tostring(user_id),
-      tostring(err)
-    )
-    return nk.json_encode({ error = "storage_write_failed" }), 500
-  end
-
-  inventory.ensure_inventory(user_id)
-
-  local username_key = string.lower(username)
-  local index_obj = {
-    collection = "user_profiles",
-    key = username_key,
-    user_id = user_id,
     value = {
       username = username,
-      user_id = user_id,
-      guest = false
+      email = email,
+      guest = false,
+      xp = 0,
+      level = 1,
+      created_at = nk.time() * 1000
     },
     permission_read = 2,
     permission_write = 0
   }
 
-  pcall(nk.storage_write, { index_obj })
+  nk.storage_write({ profile_obj })
 
-  -- 🔹 DAILY LOGIN REWARD (ADDED)
-  daily_login_rewards.process_login(context)
+  --------------------------------------------------
+  -- 4️⃣ ENSURE INVENTORY
+  --------------------------------------------------
+  inventory.ensure_inventory(user_id)
 
+  --------------------------------------------------
+  -- 5️⃣ INIT DAILY LOGIN STATE (NO CLAIM)
+  --------------------------------------------------
+  local today_state = nk.storage_read({
+    { collection = "daily_login_rewards", key = "state", user_id = user_id }
+  })
+
+  if not today_state or #today_state == 0 then
+    nk.storage_write({
+      {
+        collection = "daily_login_rewards",
+        key = "state",
+        user_id = user_id,
+        value = {
+          current_day = 1,
+          last_claim_date = ""
+        },
+        permission_read = 1,
+        permission_write = 0
+      }
+    })
+  end
+
+  --------------------------------------------------
   return nk.json_encode({ success = true, user_id = user_id })
 end
 
