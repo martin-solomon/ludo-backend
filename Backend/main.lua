@@ -62,18 +62,18 @@ for _, m in ipairs(rpc_late) do
 end
 
 ------------------------------------------------
--- 5) ✅ LEADERBOARD-RELATED MODULES (ONLY ADDITION)
+-- 5) ✅ LEADERBOARD-RELATED MODULES
 ------------------------------------------------
--- Updates wins + leaderboard after ONLINE match
 safe_require("apply_match_rewards")
-
--- Fetch leaderboard for frontend
 safe_require("rpc_get_leaderboard")
-
 safe_require("rpc_dev_init_leaderboard")
 
+------------------------------------------------
+-- 🟦 6) DAILY REWARDS (LOGIN REWARDS) ✅ NEW
+------------------------------------------------
+safe_require("rpc_daily_rewards")
 
 ------------------------------------------------
--- 6) Startup confirmation
+-- 7) Startup confirmation
 ------------------------------------------------
 nk.logger_info("main.lua loaded: runtime modules required and RPCs registered.")
