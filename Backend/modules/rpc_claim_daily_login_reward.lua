@@ -7,14 +7,15 @@ local function today()
 end
 
 local function rpc_claim_daily_login_reward(context, payload)
+  -- 🔐 Auth check
   if not context or not context.user_id then
     return nk.json_encode({ error = "unauthorized" }), 401
   end
 
   local user_id = context.user_id
-  local date = today()
+  local today_date = today()
 
-  -- Read state
+  -- 📖 Read stored state
   local objects = nk.storage_read({
     {
       collection = "daily_login_rewards",
@@ -23,61 +24,72 @@ local function rpc_claim_daily_login_reward(context, payload)
     }
   })
 
-  local state = {
-    current_day = 1,
+  -- ✅ Canonical state (ONLY SOURCE OF TRUTH)
+  local stored = {
+    day_index = 0,           -- how many rewards already claimed
     last_claim_date = ""
   }
 
-  if objects and #objects > 0 then
-    state = objects[1].value
+  if objects and #objects > 0 and type(objects[1].value) == "table" then
+    stored.day_index = tonumber(objects[1].value.day_index) or 0
+    stored.last_claim_date = objects[1].value.last_claim_date or ""
   end
 
-  -- 🔒 BLOCK DOUBLE CLAIM
-  if state.last_claim_date == date then
+  --------------------------------------------------
+  -- 🔒 BLOCK DOUBLE CLAIM (HARD LOCK)
+  --------------------------------------------------
+  if stored.last_claim_date == today_date then
     return nk.json_encode({ error = "already_claimed_today" }), 409
   end
 
-  -- Determine reward
-  local reward = DAILY_REWARDS[state.current_day]
+  --------------------------------------------------
+  -- 🎁 DETERMINE REWARD (SAFE)
+  --------------------------------------------------
+  local reward = DAILY_REWARDS[stored.day_index + 1]
+
+  -- Reset cycle after day 7
   if not reward then
-    state.current_day = 1
+    stored.day_index = 0
     reward = DAILY_REWARDS[1]
   end
 
   --------------------------------------------------
-  -- 💰 UPDATE WALLET (AUTHORITATIVE)
+  -- 💰 UPDATE WALLET (AUTHORITATIVE, ANTI-CHEAT)
   --------------------------------------------------
   nk.wallet_update(
     user_id,
     { coins = reward },
-    { reason = "daily_login", day = state.current_day },
+    { reason = "daily_login", day = stored.day_index + 1 },
     false
   )
 
   --------------------------------------------------
-  -- 🔒 UPDATE STATE (LOCK TODAY)
+  -- 📌 ADVANCE PROGRESSION (ONCE PER DAY)
   --------------------------------------------------
-  state.last_claim_date = date
-  state.current_day = state.current_day + 1
-  if state.current_day > 7 then
-    state.current_day = 1
-  end
+  stored.day_index = stored.day_index + 1
+  stored.last_claim_date = today_date
 
+  --------------------------------------------------
+  -- 💾 SAVE STATE
+  --------------------------------------------------
   nk.storage_write({
     {
       collection = "daily_login_rewards",
       key = "state",
       user_id = user_id,
-      value = state,
+      value = stored,
       permission_read = 1,
       permission_write = 0
     }
   })
 
+  --------------------------------------------------
+  -- ✅ RESPONSE (FRONTEND SAFE)
+  --------------------------------------------------
   return nk.json_encode({
     success = true,
     reward = reward,
-    next_day = state.current_day
+    next_day = stored.day_index + 1
   })
 end
 
