@@ -84,4 +84,9 @@ nk.logger_info("main.lua loaded: runtime modules required and RPCs registered.")
 safe_require("rpc_get_daily_login_rewards")
 safe_require("rpc_claim_daily_login_reward")
 
+-----------------------------------------------
+-- daily tasks (System-2)
+-----------------------------------------------
+safe_require("rpc_get_daily_tasks")
+safe_require("rpc_claim_daily_task")
 
