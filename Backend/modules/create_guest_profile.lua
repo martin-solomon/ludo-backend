@@ -7,8 +7,9 @@ local function trim(s)
 end
 
 local function create_guest_profile(context, payload)
+  -- 🔐 Auth check
   if not context or not context.user_id then
-    return nk.json_encode({ error = "unauthorized" })
+    return nk.json_encode({ error = "unauthorized" }), 401
   end
 
   local user_id = context.user_id
@@ -16,16 +17,20 @@ local function create_guest_profile(context, payload)
   local username = trim(data.username or "")
 
   if username == "" then
-    return nk.json_encode({ error = "username is required" })
+    return nk.json_encode({ error = "username_required" }), 400
   end
 
-  -- ✅ Set Nakama account fields
+  --------------------------------------------------
+  -- ✅ UPDATE NAKAMA ACCOUNT (authoritative identity)
+  --------------------------------------------------
   nk.account_update_id(user_id, {
     username = username,
     display_name = username
   })
 
-  -- 🔍 Check if profile already exists
+  --------------------------------------------------
+  -- 🔍 CHECK IF PROFILE ALREADY EXISTS
+  --------------------------------------------------
   local objects = nk.storage_read({
     {
       collection = "user_profiles",
@@ -34,10 +39,12 @@ local function create_guest_profile(context, payload)
     }
   })
 
-  -- 🆕 FIRST-TIME GUEST CREATION
-  if #objects == 0 then
+  --------------------------------------------------
+  -- 🆕 FIRST-TIME GUEST INITIALIZATION ONLY
+  --------------------------------------------------
+  if not objects or #objects == 0 then
     --------------------------------------------------
-    -- 📦 CREATE USER PROFILE
+    -- 📦 CREATE PROFILE STORAGE (UI SOURCE)
     --------------------------------------------------
     nk.storage_write({
       {
@@ -46,6 +53,7 @@ local function create_guest_profile(context, payload)
         user_id = user_id,
         value = {
           username = username,
+          display_name = username,   -- ✅ UI WILL READ THIS
           guest = true,
           created_at = os.time()
         },
@@ -55,22 +63,24 @@ local function create_guest_profile(context, payload)
     })
 
     --------------------------------------------------
-    -- 💰 INITIAL WALLET GRANT (ONE-TIME)
-    -- Purpose: Give starting coins to new guest
+    -- 💰 INITIAL WALLET GRANT (ONE-TIME ONLY)
     --------------------------------------------------
     nk.wallet_update(
       user_id,
       { coins = 1000 },
       { reason = "guest_account_init" },
-      false -- authoritative
+      false
     )
   end
 
   --------------------------------------------------
-  -- 🎁 DAILY LOGIN PROCESS (UNCHANGED)
+  -- 🎁 DAILY LOGIN PROCESS (SAFE TO CALL)
   --------------------------------------------------
   daily_login_rewards.process_login(context)
 
+  --------------------------------------------------
+  -- ✅ RESPONSE (NO STATE ASSUMPTIONS)
+  --------------------------------------------------
   return nk.json_encode({
     success = true,
     user_id = user_id,
