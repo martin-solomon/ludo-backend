@@ -25,7 +25,6 @@ local KEY = "status"
 --------------------------------------------------
 
 local function today()
-  -- Use UTC to avoid timezone issues
   return os.date("!%Y-%m-%d")
 end
 
@@ -39,18 +38,13 @@ end
 
 local function load_state(user_id)
   local r = nk.storage_read({
-    {
-      collection = COLLECTION,
-      key = KEY,
-      user_id = user_id
-    }
+    { collection = COLLECTION, key = KEY, user_id = user_id }
   })
 
   if r and #r > 0 then
     return r[1].value
   end
 
-  -- initialize fresh state
   local state = {
     week_start = today(),
     last_claim = nil,
@@ -72,15 +66,12 @@ local function load_state(user_id)
 end
 
 local function reset_if_needed(state)
-  local diff = days_between(today(), state.week_start)
-
-  if diff >= 7 then
+  if days_between(today(), state.week_start) >= 7 then
     state.week_start = today()
     state.last_claim = nil
     state.current_day = 1
     return true
   end
-
   return false
 end
 
@@ -93,29 +84,12 @@ local function daily_rewards_fetch(context, payload)
     return nk.json_encode({ error = "unauthorized" }), 401
   end
 
-  local user_id = context.user_id
-  local state = load_state(user_id)
-
-  local reset = reset_if_needed(state)
-
-  if reset then
-    nk.storage_write({
-      {
-        collection = COLLECTION,
-        key = KEY,
-        user_id = user_id,
-        value = state,
-        permission_read = 0,
-        permission_write = 0
-      }
-    })
-  end
-
-  local claimed_today = (state.last_claim == today())
+  local state = load_state(context.user_id)
+  reset_if_needed(state)
 
   return nk.json_encode({
     current_day = state.current_day,
-    claimed_today = claimed_today,
+    claimed_today = (state.last_claim == today()),
     rewards = REWARD_TABLE
   })
 end
@@ -129,39 +103,19 @@ local function daily_rewards_claim(context, payload)
     return nk.json_encode({ error = "unauthorized" }), 401
   end
 
-  local user_id = context.user_id
-  local state = load_state(user_id)
-
+  local state = load_state(context.user_id)
   reset_if_needed(state)
 
-  -- one claim per day
   if state.last_claim == today() then
     return nk.json_encode({ error = "already_claimed_today" }), 400
   end
 
-  local day = state.current_day
-  local reward = REWARD_TABLE[day]
-
+  local reward = REWARD_TABLE[state.current_day]
   if not reward then
     return nk.json_encode({ error = "invalid_reward_day" }), 500
   end
 
-  --------------------------------------------------
-  -- APPLY REWARD (WALLET)
-  --------------------------------------------------
-
-  if reward.coins and reward.coins > 0 then
-    nk.wallet_update(
-      user_id,
-      { coins = reward.coins },
-      {},
-      false
-    )
-  end
-
-  --------------------------------------------------
-  -- UPDATE STATE
-  --------------------------------------------------
+  nk.wallet_update(context.user_id, { coins = reward.coins }, {}, false)
 
   state.last_claim = today()
   state.current_day = state.current_day + 1
@@ -176,7 +130,7 @@ local function daily_rewards_claim(context, payload)
     {
       collection = COLLECTION,
       key = KEY,
-      user_id = user_id,
+      user_id = context.user_id,
       value = state,
       permission_read = 0,
       permission_write = 0
@@ -185,24 +139,14 @@ local function daily_rewards_claim(context, payload)
 
   return nk.json_encode({
     success = true,
-    claimed_day = day,
     reward = reward,
     next_day = state.current_day
   })
 end
 
 --------------------------------------------------
--- EXPORTS
---------------------------------------------------
-
-return {
-  fetch = daily_rewards_fetch,
-  claim = daily_rewards_claim
-}
---------------------------------------------------
--- RPC REGISTRATION (REQUIRED)
+-- ✅ RPC REGISTRATION (MANDATORY)
 --------------------------------------------------
 
 nk.register_rpc(daily_rewards_fetch, "daily_rewards.fetch")
 nk.register_rpc(daily_rewards_claim, "daily_rewards.claim")
-
