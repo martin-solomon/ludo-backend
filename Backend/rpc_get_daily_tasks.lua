@@ -3,6 +3,9 @@ local nk = require("nakama")
 -- 🔒 PHASE D-3: Rate limiting (NEW)
 local rate_limit = require("utils_rate_limit")
 
+-- 🟦 DAILY REWARDS LOGIC (EMBEDDED, NO NEW RPC)
+local daily_rewards = require("daily_rewards_logic")
+
 local function get_daily_tasks(context, payload)
   if not context.user_id then
     return nk.json_encode({ error = "unauthorized" }), 401
