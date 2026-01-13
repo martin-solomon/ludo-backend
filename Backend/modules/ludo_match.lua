@@ -1,4 +1,4 @@
--- ludo_match.lua (PRODUCTION – PHASE A + B + STEP-8)
+-- ludo_match.lua (PRODUCTION – PHASE A + B + STEP-8 + CAPTURE HOOK)
 local nk = require("nakama")
 
 local apply_rewards = require("apply_match_rewards")
@@ -97,16 +97,12 @@ function M.match_loop(context, dispatcher, tick, state, messages)
       }))
 
       ------------------------------------------------
-      -- 🟦 PAWN MOVEMENT HOOK (NEW)
-      -- Purpose: Connect pawn gameplay → daily tasks
+      -- 🟦 PAWN MOVEMENT HOOK
       ------------------------------------------------
-
-      -- Example pawn movement logic (placeholder)
       local steps_moved = dice
-      local from_base = (dice == 6)       -- example condition
-      local reached_home = false          -- real logic comes later
+      local from_base = (dice == 6)
+      local reached_home = false
 
-      -- 📅 DAILY TASK: PAWN MOVED
       update_daily_tasks(user_id, "pawn_move", steps_moved)
 
       if from_base then
@@ -115,6 +111,16 @@ function M.match_loop(context, dispatcher, tick, state, messages)
 
       if reached_home then
         update_daily_tasks(user_id, "pawn_home", 1)
+      end
+
+      ------------------------------------------------
+      -- 🟧 PAWN CAPTURE HOOK (NEW & REQUIRED)
+      -- Purpose: Enable capture-based daily tasks
+      ------------------------------------------------
+      local pawn_captured = data.pawn_captured == true
+
+      if pawn_captured then
+        update_daily_tasks(user_id, "pawn_capture", 1)
       end
 
       ------------------------------------------------
