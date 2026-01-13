@@ -77,3 +77,9 @@ safe_require("rpc_dev_init_leaderboard")
 -- 6) Startup confirmation
 ------------------------------------------------
 nk.logger_info("main.lua loaded: runtime modules required and RPCs registered.")
+
+-----------------------------------------------
+-- daily login rewards
+-----------------------------------------------
+safe_require("rpc_get_daily_login_rewards")
+
