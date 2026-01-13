@@ -1,4 +1,4 @@
--- ludo_match.lua (PRODUCTION – PHASE A + B + STEP-5)
+-- ludo_match.lua (PRODUCTION – PHASE A + B + STEP-8)
 local nk = require("nakama")
 
 local apply_rewards = require("apply_match_rewards")
@@ -20,7 +20,7 @@ function M.match_init(context, params)
     winner = nil,
     version = 1,
 
-    -- ⏳ STEP-5: Track last player action
+    -- ⏳ Track last player action
     last_action_time = os.time()
   }
 
@@ -32,13 +32,12 @@ end
 ------------------------------------------------
 function M.match_loop(context, dispatcher, tick, state, messages)
 
-  -- ⏳ STEP-5: ABANDON / FORFEIT CHECK
+  -- ⏳ ABANDON / FORFEIT CHECK
   if not state.match_finished then
     if os.time() - state.last_action_time > 60 then
       state.match_finished = true
       state.game_over = true
 
-      -- determine remaining player as winner
       local winner_id = nil
       for _, presence in pairs(state.players) do
         winner_id = presence.user_id
@@ -82,14 +81,13 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         return state
       end
 
-      -- ⏱ Update last action time (STEP-5)
       state.last_action_time = os.time()
 
       local dice = math.random(1, 6)
       state.dice_value = dice
 
-      -- 📅 DAILY PLAY TASK
-      update_daily_tasks(user_id, "play")
+      -- 📅 DAILY TASK: PLAY MATCH
+      update_daily_tasks(user_id, "play", 1)
 
       dispatcher.broadcast_message(1, nk.json_encode({
         type = "dice_result",
@@ -98,7 +96,30 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         version = state.version
       }))
 
-      -- 🏆 WIN CONDITION (SINGLE SOURCE OF TRUTH)
+      ------------------------------------------------
+      -- 🟦 PAWN MOVEMENT HOOK (NEW)
+      -- Purpose: Connect pawn gameplay → daily tasks
+      ------------------------------------------------
+
+      -- Example pawn movement logic (placeholder)
+      local steps_moved = dice
+      local from_base = (dice == 6)       -- example condition
+      local reached_home = false          -- real logic comes later
+
+      -- 📅 DAILY TASK: PAWN MOVED
+      update_daily_tasks(user_id, "pawn_move", steps_moved)
+
+      if from_base then
+        update_daily_tasks(user_id, "pawn_base", 1)
+      end
+
+      if reached_home then
+        update_daily_tasks(user_id, "pawn_home", 1)
+      end
+
+      ------------------------------------------------
+      -- 🏆 WIN CONDITION
+      ------------------------------------------------
       if dice == 6 then
         if state.match_finished then
           return state
@@ -110,13 +131,11 @@ function M.match_loop(context, dispatcher, tick, state, messages)
 
         local rewards = { coins = 100, xp = 50 }
 
-        -- 🎁 APPLY REWARDS (SAFE)
         local profile = apply_rewards(user_id, rewards, context.match_id)
 
-        -- 📅 DAILY WIN TASK
-        update_daily_tasks(user_id, "win")
+        -- 📅 DAILY TASK: WIN MATCH
+        update_daily_tasks(user_id, "win", 1)
 
-        -- 🏆 LEADERBOARD UPDATE (LOCKED)
         if profile then
           nk.leaderboard_record_write(
             "global_level",
