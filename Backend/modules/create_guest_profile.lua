@@ -1,5 +1,6 @@
 -- create_guest_profile.lua
 local nk = require("nakama")
+local daily_login_rewards = require("daily_login_rewards")
 
 local function trim(s)
   return (s:gsub("^%s*(.-)%s*$", "%1"))
@@ -17,13 +18,11 @@ local function create_guest_profile(context, payload)
     return nk.json_encode({ error = "username is required" })
   end
 
-  -- 🔴 THIS IS THE CRITICAL FIX
   nk.account_update_id(context.user_id, {
     username = username,
-    display_name = username   -- ✅ REQUIRED
+    display_name = username
   })
 
-  -- profile storage (unchanged)
   local objects = nk.storage_read({
     {
       collection = "user_profiles",
@@ -48,6 +47,9 @@ local function create_guest_profile(context, payload)
       }
     })
   end
+
+  -- 🔹 DAILY LOGIN REWARD (ADDED)
+  daily_login_rewards.process_login(context)
 
   return nk.json_encode({
     success = true,
