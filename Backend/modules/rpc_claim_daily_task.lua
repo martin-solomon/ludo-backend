@@ -66,8 +66,19 @@ local function rpc_claim_daily_task(context, payload)
     return nk.json_encode({ error = "invalid_reward" }), 500
   end
 
-  -- 💰 Grant coins (authoritative)
-  nk.wallet_update(user_id, { coins = reward }, { reason = "daily_task" })
+  --------------------------------------------------
+  -- 💰 AUTHORITATIVE WALLET UPDATE (THE FIX)
+  --------------------------------------------------
+  nk.wallet_update(
+    user_id,
+    { coins = reward },
+    {
+      reason = "daily_task",
+      task_id = task_id,
+      date = date
+    },
+    false -- authoritative = false (server is authority)
+  )
 
   -- 🔒 Mark task as claimed
   task.claimed = true
