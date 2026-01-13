@@ -1,6 +1,6 @@
 local nk = require("nakama")
 
--- 🔒 PHASE D-3: Rate limiting (NEW)
+-- 🔒 PHASE D-3: Rate limiting
 local rate_limit = require("utils_rate_limit")
 
 -- 🟦 DAILY REWARDS LOGIC (EMBEDDED, NO NEW RPC)
@@ -11,7 +11,7 @@ local function get_daily_tasks(context, payload)
     return nk.json_encode({ error = "unauthorized" }), 401
   end
 
-  -- 🔒 PHASE D-3: Max 1 request per second per user (NEW)
+  -- 🔒 Rate limit: 1 request per second per user
   local ok, reason = rate_limit.check(context, "daily_tasks_get", 1)
   if not ok then
     return nk.json_encode({ error = reason }), 429
@@ -48,8 +48,18 @@ local function get_daily_tasks(context, payload)
     end
   end
 
-  -- ⚠️ IMPORTANT: RETURN ONLY ONE VALUE
-  return nk.json_encode(tasks)
+  --------------------------------------------------
+  -- 🟦 STEP-1: FETCH DAILY REWARDS STATE
+  --------------------------------------------------
+  local daily_rewards_state = daily_rewards.get(nk, context.user_id)
+
+  --------------------------------------------------
+  -- RETURN COMBINED RESPONSE
+  --------------------------------------------------
+  return nk.json_encode({
+    tasks = tasks,
+    daily_rewards = daily_rewards_state
+  })
 end
 
 nk.register_rpc(get_daily_tasks, "daily.tasks.get")
