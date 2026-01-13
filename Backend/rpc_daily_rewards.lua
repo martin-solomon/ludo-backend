@@ -25,14 +25,15 @@ local KEY = "status"
 --------------------------------------------------
 
 local function today()
+  -- Use UTC to avoid timezone issues
   return os.date("!%Y-%m-%d")
 end
 
 local function days_between(date1, date2)
   local y1, m1, d1 = date1:match("(%d+)%-(%d+)%-(%d+)")
   local y2, m2, d2 = date2:match("(%d+)%-(%d+)%-(%d+)")
-  local t1 = os.time({ year=y1, month=m1, day=d1, hour=0 })
-  local t2 = os.time({ year=y2, month=m2, day=d2, hour=0 })
+  local t1 = os.time({ year = y1, month = m1, day = d1, hour = 0 })
+  local t2 = os.time({ year = y2, month = m2, day = d2, hour = 0 })
   return math.floor(os.difftime(t1, t2) / 86400)
 end
 
@@ -45,6 +46,7 @@ local function load_state(user_id)
     return r[1].value
   end
 
+  -- Initialize fresh state
   local state = {
     week_start = today(),
     last_claim = nil,
@@ -65,13 +67,25 @@ local function load_state(user_id)
   return state
 end
 
+-- ✅ CRASH-PROOF RESET LOGIC (REPLACED HERE)
 local function reset_if_needed(state)
-  if days_between(today(), state.week_start) >= 7 then
+  -- Defensive defaults (prevents 502 crashes)
+  if not state.week_start or not state.current_day then
     state.week_start = today()
     state.last_claim = nil
     state.current_day = 1
     return true
   end
+
+  local diff = days_between(today(), state.week_start)
+
+  if diff >= 7 then
+    state.week_start = today()
+    state.last_claim = nil
+    state.current_day = 1
+    return true
+  end
+
   return false
 end
 
@@ -106,6 +120,7 @@ local function daily_rewards_claim(context, payload)
   local state = load_state(context.user_id)
   reset_if_needed(state)
 
+  -- One claim per day
   if state.last_claim == today() then
     return nk.json_encode({ error = "already_claimed_today" }), 400
   end
@@ -115,8 +130,15 @@ local function daily_rewards_claim(context, payload)
     return nk.json_encode({ error = "invalid_reward_day" }), 500
   end
 
-  nk.wallet_update(context.user_id, { coins = reward.coins }, {}, false)
+  -- Apply reward
+  nk.wallet_update(
+    context.user_id,
+    { coins = reward.coins },
+    {},
+    false
+  )
 
+  -- Update state
   state.last_claim = today()
   state.current_day = state.current_day + 1
 
