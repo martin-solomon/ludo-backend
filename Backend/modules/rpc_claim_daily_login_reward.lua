@@ -1,6 +1,3 @@
--- rpc_claim_daily_login_reward.lua
--- Claim daily login reward (System-1)
-
 local nk = require("nakama")
 
 local DAILY_REWARDS = {10, 20, 30, 40, 50, 60, 70}
@@ -17,7 +14,7 @@ local function rpc_claim_daily_login_reward(context, payload)
   local user_id = context.user_id
   local date = today()
 
-  -- 📖 Read state
+  -- Read state
   local objects = nk.storage_read({
     {
       collection = "daily_login_rewards",
@@ -35,34 +32,34 @@ local function rpc_claim_daily_login_reward(context, payload)
     state = objects[1].value
   end
 
-  -- ❌ Already claimed today
+  -- 🔒 BLOCK DOUBLE CLAIM
   if state.last_claim_date == date then
     return nk.json_encode({ error = "already_claimed_today" }), 409
   end
 
-  local reward = DAILY_REWARDS[state.current_day] or 0
-  if reward <= 0 then
-    return nk.json_encode({ error = "invalid_reward" }), 500
+  -- Determine reward
+  local reward = DAILY_REWARDS[state.current_day]
+  if not reward then
+    state.current_day = 1
+    reward = DAILY_REWARDS[1]
   end
 
   --------------------------------------------------
-  -- 💰 AUTHORITATIVE WALLET UPDATE
+  -- 💰 UPDATE WALLET (AUTHORITATIVE)
   --------------------------------------------------
   nk.wallet_update(
     user_id,
     { coins = reward },
-    {
-      reason = "daily_login",
-      day = state.current_day,
-      date = date
-    },
+    { reason = "daily_login", day = state.current_day },
     false
   )
 
-  -- ⏭ Advance day
+  --------------------------------------------------
+  -- 🔒 UPDATE STATE (LOCK TODAY)
+  --------------------------------------------------
   state.last_claim_date = date
   state.current_day = state.current_day + 1
-  if state.current_day > #DAILY_REWARDS then
+  if state.current_day > 7 then
     state.current_day = 1
   end
 
