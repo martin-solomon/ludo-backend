@@ -1,27 +1,49 @@
 -- rpc_claim_daily_task.lua
 -- Claim reward for a completed daily task (System-2)
+-- HARDENED & PRODUCTION SAFE
 
 local nk = require("nakama")
+local rate_limit = require("utils_rate_limit")
 
 local function today()
   return os.date("!%Y-%m-%d")
 end
 
 local function rpc_claim_daily_task(context, payload)
-  -- 🔐 Auth check
+  --------------------------------------------------
+  -- 🔐 AUTH CHECK
+  --------------------------------------------------
   if not context or not context.user_id then
     return nk.json_encode({ error = "unauthorized" }), 401
   end
 
   local user_id = context.user_id
+  local date = today()
 
-  -- 📦 Parse payload
+  --------------------------------------------------
+  -- 🔐 HARDENING #1 — RATE LIMIT (ANTI-SPAM)
+  --------------------------------------------------
+  local ok, reason = rate_limit.check(context, "daily_task_claim", 1)
+  if not ok then
+    return nk.json_encode({ error = "too_many_requests" }), 429
+  end
+
+  --------------------------------------------------
+  -- 📦 PARSE PAYLOAD
+  --------------------------------------------------
   local data = {}
   if payload and payload ~= "" then
-    local ok, decoded = pcall(nk.json_decode, payload)
-    if ok and type(decoded) == "table" then
+    local success, decoded = pcall(nk.json_decode, payload)
+    if success and type(decoded) == "table" then
       data = decoded
     end
+  end
+
+  --------------------------------------------------
+  -- 🔐 HARDENING #2 — EXPLICIT USER INTENT REQUIRED
+  --------------------------------------------------
+  if data.confirm ~= true then
+    return nk.json_encode({ error = "explicit_claim_required" }), 400
   end
 
   local task_id = data.task_id
@@ -29,9 +51,9 @@ local function rpc_claim_daily_task(context, payload)
     return nk.json_encode({ error = "task_id_required" }), 400
   end
 
-  local date = today()
-
-  -- 📖 Read today's tasks
+  --------------------------------------------------
+  -- 📖 READ TODAY'S DAILY TASKS
+  --------------------------------------------------
   local objects = nk.storage_read({
     {
       collection = "daily_tasks",
@@ -45,42 +67,52 @@ local function rpc_claim_daily_task(context, payload)
   end
 
   local daily = objects[1].value
-  local task = daily.tasks[task_id]
+  local task = daily.tasks and daily.tasks[task_id]
 
   if not task then
     return nk.json_encode({ error = "task_not_found" }), 404
   end
 
-  -- ❌ Already claimed
-  if task.claimed then
+  --------------------------------------------------
+  -- 🔒 BLOCK DOUBLE CLAIM
+  --------------------------------------------------
+  if task.claimed == true then
     return nk.json_encode({ error = "task_already_claimed" }), 409
   end
 
-  -- ❌ Not completed
-  if task.progress < task.goal then
+  --------------------------------------------------
+  -- 🔒 BLOCK INCOMPLETE TASK
+  --------------------------------------------------
+  if (task.progress or 0) < (task.goal or 0) then
     return nk.json_encode({ error = "task_not_completed" }), 409
   end
 
+  --------------------------------------------------
+  -- 🔐 HARDENING #3 — WALLET MUST EXIST
+  --------------------------------------------------
+  local wallet = nk.wallet_get(user_id)
+  if not wallet or wallet.coins == nil then
+    return nk.json_encode({ error = "wallet_not_initialized" }), 500
+  end
+
+  --------------------------------------------------
+  -- 🎁 GRANT COINS (AUTHORITATIVE)
+  --------------------------------------------------
   local reward = tonumber(task.reward) or 0
   if reward <= 0 then
     return nk.json_encode({ error = "invalid_reward" }), 500
   end
 
-  --------------------------------------------------
-  -- 💰 AUTHORITATIVE WALLET UPDATE (THE FIX)
-  --------------------------------------------------
   nk.wallet_update(
     user_id,
     { coins = reward },
-    {
-      reason = "daily_task",
-      task_id = task_id,
-      date = date
-    },
-    false -- authoritative = false (server is authority)
+    { reason = "daily_task", task_id = task_id },
+    true
   )
 
-  -- 🔒 Mark task as claimed
+  --------------------------------------------------
+  -- 🔒 MARK TASK AS CLAIMED
+  --------------------------------------------------
   task.claimed = true
 
   nk.storage_write({
@@ -94,7 +126,9 @@ local function rpc_claim_daily_task(context, payload)
     }
   })
 
-  -- ✅ Success
+  --------------------------------------------------
+  -- ✅ SUCCESS
+  --------------------------------------------------
   return nk.json_encode({
     success = true,
     task_id = task_id,
