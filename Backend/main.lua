@@ -82,6 +82,12 @@ nk.logger_info("main.lua loaded: runtime modules required and RPCs registered.")
 -- rename
 -----------------------------------------------
 safe_require("rpc_rename_username")
+-----------------------------------------------
+--daily tasks
+-----------------------------------------------
+safe_require("daily_login_task")
+safe_require("rpc_get_daily_tasks")
+
 
 
 
