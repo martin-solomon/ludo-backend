@@ -1,5 +1,6 @@
 local nk = require("nakama")
 local inventory = require("inventory_helper")
+local daily_login_state = require("daily_login_rewards")
 
 local function parse_rpc_payload(payload)
   if payload == nil then return {} end
@@ -26,17 +27,13 @@ local function create_user_rpc(context, payload)
 
   local user_id = context.user_id
 
-  --------------------------------------------------
-  -- 1️⃣ FORCE ACCOUNT NAME (FIXES “Player” ISSUE)
-  --------------------------------------------------
+  -- 1️⃣ Account name
   nk.account_update_id(user_id, {
     username = username,
     display_name = username
   })
 
-  --------------------------------------------------
-  -- 2️⃣ INIT WALLET (AUTHORITATIVE)
-  --------------------------------------------------
+  -- 2️⃣ Wallet init (one-time via authoritative replace)
   nk.wallet_update(
     user_id,
     { coins = 1000 },
@@ -44,56 +41,31 @@ local function create_user_rpc(context, payload)
     true
   )
 
-  --------------------------------------------------
-  -- 3️⃣ STORE PROFILE METADATA (NOT ECONOMY)
-  --------------------------------------------------
-  local profile_obj = {
-    collection = "user_profiles",
-    key = user_id,
-    user_id = user_id,
-    value = {
-      username = username,
-      email = email,
-      guest = false,
-      xp = 0,
-      level = 1,
-      created_at = nk.time() * 1000
-    },
-    permission_read = 2,
-    permission_write = 0
-  }
-
-  nk.storage_write({ profile_obj })
-
-  --------------------------------------------------
-  -- 4️⃣ ENSURE INVENTORY
-  --------------------------------------------------
-  inventory.ensure_inventory(user_id)
-
-  --------------------------------------------------
-  -- 5️⃣ INIT DAILY LOGIN STATE (NO CLAIM)
-  --------------------------------------------------
-  local today_state = nk.storage_read({
-    { collection = "daily_login_rewards", key = "state", user_id = user_id }
+  -- 3️⃣ Profile metadata
+  nk.storage_write({
+    {
+      collection = "user_profiles",
+      key = user_id,
+      user_id = user_id,
+      value = {
+        username = username,
+        email = email,
+        guest = false,
+        xp = 0,
+        level = 1,
+        created_at = nk.time() * 1000
+      },
+      permission_read = 2,
+      permission_write = 0
+    }
   })
 
-  if not today_state or #today_state == 0 then
-    nk.storage_write({
-      {
-        collection = "daily_login_rewards",
-        key = "state",
-        user_id = user_id,
-        value = {
-          current_day = 1,
-          last_claim_date = ""
-        },
-        permission_read = 1,
-        permission_write = 0
-      }
-    })
-  end
+  -- 4️⃣ Inventory
+  inventory.ensure_inventory(user_id)
 
-  --------------------------------------------------
+  -- 5️⃣ ✅ DAILY LOGIN STATE (ENSURE ONLY, NEVER RESET)
+  daily_login_state.ensure(user_id)
+
   return nk.json_encode({ success = true, user_id = user_id })
 end
 
