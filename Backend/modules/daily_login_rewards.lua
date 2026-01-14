@@ -1,11 +1,10 @@
 -- daily_login_rewards.lua
--- SYSTEM-1: DAILY LOGIN REWARDS (STATE ONLY)
+-- DAILY LOGIN STREAK STATE (NO CLAIM LOGIC)
 
 local nk = require("nakama")
 local M = {}
 
--- Ensure state exists (called from create_user / create_guest_profile)
-function M.ensure_state(user_id)
+function M.get_state(user_id)
   local r = nk.storage_read({
     { collection = "daily_login_rewards", key = "state", user_id = user_id }
   })
@@ -14,11 +13,10 @@ function M.ensure_state(user_id)
     return r[1].value
   end
 
-  local state = {
-    current_day = 1,        -- 1..7
-    last_claim_date = ""    -- YYYY-MM-DD
-  }
+  return { current_day = 1 }
+end
 
+function M.save_state(user_id, state)
   nk.storage_write({
     {
       collection = "daily_login_rewards",
@@ -29,25 +27,6 @@ function M.ensure_state(user_id)
       permission_write = 0
     }
   })
-
-  return state
-end
-
--- Read-only accessor
-function M.get_state(user_id)
-  local r = nk.storage_read({
-    { collection = "daily_login_rewards", key = "state", user_id = user_id }
-  })
-
-  if r and #r > 0 then
-    return r[1].value
-  end
-
-  -- safety fallback
-  return {
-    current_day = 1,
-    last_claim_date = ""
-  }
 end
 
 return M
