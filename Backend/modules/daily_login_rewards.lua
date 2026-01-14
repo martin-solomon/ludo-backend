@@ -1,18 +1,18 @@
--- daily_login_state.lua
--- SINGLE SOURCE OF TRUTH for daily login state
+-- daily_login_rewards.lua
+-- SYSTEM-1: DAILY LOGIN STATE (NO AUTO-CLAIM)
 
 local nk = require("nakama")
 
 local M = {}
 
-local function today()
-  return os.date("!%Y-%m-%d")
-end
-
--- Create state ONCE, never reset
+-- Ensure state exists ONCE (never reset)
 function M.ensure(user_id)
   local records = nk.storage_read({
-    { collection = "daily_login_state", key = "state", user_id = user_id }
+    {
+      collection = "daily_login_rewards",
+      key = "state",
+      user_id = user_id
+    }
   })
 
   if records and #records > 0 then
@@ -20,9 +20,8 @@ function M.ensure(user_id)
   end
 
   local state = {
-    current_day = 1,
-    last_claim_date = "",
-    created_at = today()
+    current_day = 1,        -- 1..7
+    last_claim_date = ""    -- empty means not claimed yet
   }
 
   nk.storage_write({
@@ -39,9 +38,14 @@ function M.ensure(user_id)
   return state
 end
 
+-- Read-only accessor
 function M.get(user_id)
   local records = nk.storage_read({
-    { collection = "daily_login_state", key = "state", user_id = user_id }
+    {
+      collection = "daily_login_rewards",
+      key = "state",
+      user_id = user_id
+    }
   })
 
   if records and #records > 0 then
@@ -51,18 +55,4 @@ function M.get(user_id)
   return M.ensure(user_id)
 end
 
-function M.update(user_id, state)
-  nk.storage_write({
-    {
-      collection = "daily_login_rewards",
-      key = "state",
-      user_id = user_id,
-      value = state,
-      permission_read = 1,
-      permission_write = 0
-    }
-  })
-end
-
 return M
-
