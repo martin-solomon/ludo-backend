@@ -5,7 +5,10 @@ local nk = require("nakama")
 
 local M = {}
 
--- Ensure state exists (called from create_user / create_guest_profile)
+--------------------------------------------------
+-- Ensure daily login state exists
+-- Called from create_user / create_guest_profile
+--------------------------------------------------
 function M.ensure_state(user_id)
   local records = nk.storage_read({
     {
@@ -20,7 +23,7 @@ function M.ensure_state(user_id)
   end
 
   local state = {
-    current_day = 1,        -- 1..7
+    current_day = 1,        -- 1..7 (next claimable day)
     last_claim_date = ""    -- empty = not claimed today
   }
 
@@ -38,7 +41,9 @@ function M.ensure_state(user_id)
   return state
 end
 
+--------------------------------------------------
 -- Read-only accessor
+--------------------------------------------------
 function M.get_state(user_id)
   local records = nk.storage_read({
     {
@@ -52,7 +57,7 @@ function M.get_state(user_id)
     return records[1].value
   end
 
-  -- fallback safety
+  -- Safety fallback (should not normally happen)
   return {
     current_day = 1,
     last_claim_date = ""
