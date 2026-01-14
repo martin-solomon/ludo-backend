@@ -27,7 +27,7 @@ function M.ensure(user_id)
 
   nk.storage_write({
     {
-      collection = "daily_login_state",
+      collection = "daily_login_rewards",
       key = "state",
       user_id = user_id,
       value = state,
@@ -65,3 +65,4 @@ function M.update(user_id, state)
 end
 
 return M
+
