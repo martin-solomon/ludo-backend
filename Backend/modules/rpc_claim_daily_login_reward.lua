@@ -1,7 +1,11 @@
-local nk = require("nakama")
-local daily_login_state = require("daily_login_rewards")
+-- rpc_claim_daily_login_reward.lua
+-- CLAIM DAILY LOGIN REWARD (ON BUTTON TAP ONLY)
 
-local DAILY_REWARDS = {10,20,30,40,50,60,70}
+local nk = require("nakama")
+local rate_limit = require("utils_rate_limit")
+local daily_login_rewards = require("daily_login_rewards")
+
+local DAILY_REWARDS = {10, 20, 30, 40, 50, 60, 70}
 
 local function today()
   return os.date("!%Y-%m-%d")
@@ -12,35 +16,44 @@ local function rpc_claim(context, payload)
     return nk.json_encode({ success = false, error = "unauthorized" })
   end
 
-  local data = nk.json_decode(payload or "{}")
+  local data = {}
+  if payload and payload ~= "" then
+    local ok, decoded = pcall(nk.json_decode, payload)
+    if ok and type(decoded) == "table" then
+      data = decoded
+    end
+  end
+
+  -- 🔒 Explicit intent required
   if data.confirm ~= true then
-    return nk.json_encode({ success = false, error = "confirm_required" })
+    return nk.json_encode({ success = false, error = "explicit_claim_required" })
+  end
+
+  -- 🔒 Rate limit
+  local ok = rate_limit.check(context, "daily_login_claim", 1)
+  if not ok then
+    return nk.json_encode({ success = false, error = "too_many_requests" })
   end
 
   local user_id = context.user_id
-  local now = today()
+  local today_str = today()
 
-  local state = daily_login_state.get(user_id)
-
-  -- Already claimed today
-  if state.last_claim_date == now then
-    return nk.json_encode({
-      success = false,
-      error = "already_claimed_today"
-    })
+  -- 🔒 Wallet must exist
+  local wallet = nk.wallet_get(user_id)
+  if not wallet or wallet.coins == nil then
+    return nk.json_encode({ success = false, error = "wallet_not_initialized" })
   end
 
-  -- Reset streak if skipped a day
-  if state.last_claim_date ~= "" and state.last_claim_date ~= now then
-    local diff = os.difftime(os.time(), os.time{year=state.last_claim_date:sub(1,4), month=state.last_claim_date:sub(6,7), day=state.last_claim_date:sub(9,10)})
-    if diff > 86400 then
-      state.current_day = 1
-    end
+  local state = daily_login_rewards.get(user_id)
+
+  -- 🔒 One claim per calendar day
+  if state.last_claim_date == today_str then
+    return nk.json_encode({ success = false, error = "already_claimed_today" })
   end
 
   local reward = DAILY_REWARDS[state.current_day] or DAILY_REWARDS[1]
 
-  -- WALLET UPDATE (ONLY HERE)
+  -- 💰 AUTHORITATIVE WALLET UPDATE
   nk.wallet_update(
     user_id,
     { coins = reward },
@@ -48,19 +61,29 @@ local function rpc_claim(context, payload)
     false
   )
 
-  -- Advance day
-  state.last_claim_date = now
-  state.current_day = state.current_day + 1
-  if state.current_day > 7 then state.current_day = 1 end
+  -- 🔁 Advance / reset streak
+  local next_day = state.current_day + 1
+  if next_day > 7 then next_day = 1 end
 
-  daily_login_state.update(user_id, state)
+  state.current_day = next_day
+  state.last_claim_date = today_str
+
+  nk.storage_write({
+    {
+      collection = "daily_login_rewards",
+      key = "state",
+      user_id = user_id,
+      value = state,
+      permission_read = 1,
+      permission_write = 0
+    }
+  })
 
   return nk.json_encode({
     success = true,
     reward = reward,
-    next_day = state.current_day
+    next_day = next_day
   })
 end
 
 nk.register_rpc(rpc_claim, "daily.login.claim")
-
