@@ -1,6 +1,6 @@
 local nk = require("nakama")
 local inventory = require("inventory_helper")
-local daily_login_state = require("daily_login_rewards")
+local daily_login_rewards = require("daily_login_rewards") -- ✅ USE SAME FILE NAME
 
 local function parse_rpc_payload(payload)
   if payload == nil then return {} end
@@ -27,13 +27,17 @@ local function create_user_rpc(context, payload)
 
   local user_id = context.user_id
 
-  -- 1️⃣ Account name
+  --------------------------------------------------
+  -- 1️⃣ Account name (UNCHANGED)
+  --------------------------------------------------
   nk.account_update_id(user_id, {
     username = username,
     display_name = username
   })
 
-  -- 2️⃣ Wallet init (one-time via authoritative replace)
+  --------------------------------------------------
+  -- 2️⃣ Wallet init (UNCHANGED, working)
+  --------------------------------------------------
   nk.wallet_update(
     user_id,
     { coins = 1000 },
@@ -41,7 +45,9 @@ local function create_user_rpc(context, payload)
     true
   )
 
-  -- 3️⃣ Profile metadata
+  --------------------------------------------------
+  -- 3️⃣ Profile metadata (UNCHANGED)
+  --------------------------------------------------
   nk.storage_write({
     {
       collection = "user_profiles",
@@ -60,11 +66,15 @@ local function create_user_rpc(context, payload)
     }
   })
 
-  -- 4️⃣ Inventory
+  --------------------------------------------------
+  -- 4️⃣ Inventory (UNCHANGED)
+  --------------------------------------------------
   inventory.ensure_inventory(user_id)
 
+  --------------------------------------------------
   -- 5️⃣ ✅ DAILY LOGIN STATE (ENSURE ONLY, NEVER RESET)
-  daily_login_state.ensure(user_id)
+  --------------------------------------------------
+  daily_login_rewards.ensure(user_id)
 
   return nk.json_encode({ success = true, user_id = user_id })
 end
