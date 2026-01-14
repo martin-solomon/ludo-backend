@@ -26,7 +26,7 @@ local function rpc_get_daily_login_rewards(context, payload)
 
   local claimed_today = (state.last_claim_date == today)
 
-  -- 📤 PURE READ RESPONSE
+  -- 📤 READ-ONLY RESPONSE
   return nk.json_encode({
     success = true,
     current_day = state.current_day,   -- 1..7
