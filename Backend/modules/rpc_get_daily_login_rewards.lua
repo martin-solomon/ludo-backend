@@ -1,5 +1,5 @@
 local nk = require("nakama")
-local state_mod = require("daily_login_state")
+local state_mod = require("daily_login_rewards")
 
 local DAILY_REWARDS = {10,20,30,40,50,60,70}
 
@@ -23,3 +23,4 @@ local function rpc_get(context, payload)
 end
 
 nk.register_rpc(rpc_get, "get_daily_login_rewards")
+
