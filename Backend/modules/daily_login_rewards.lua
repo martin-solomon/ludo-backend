@@ -1,15 +1,11 @@
 -- daily_login_rewards.lua
--- SYSTEM-1: DAILY LOGIN REWARDS (STATE ONLY, NO AUTO-CLAIM)
+-- SYSTEM-1: DAILY LOGIN REWARDS (STATE ONLY)
 
 local nk = require("nakama")
 
 local M = {}
 
-local function today_date()
-  return os.date("!%Y-%m-%d")
-end
-
--- Ensure state exists (called on login / account creation)
+-- Ensure state exists (called from create_user / create_guest_profile)
 function M.ensure_state(user_id)
   local records = nk.storage_read({
     {
@@ -25,7 +21,7 @@ function M.ensure_state(user_id)
 
   local state = {
     current_day = 1,        -- 1..7
-    last_claim_date = ""    -- empty means not claimed today
+    last_claim_date = ""    -- empty = not claimed today
   }
 
   nk.storage_write({
@@ -42,7 +38,7 @@ function M.ensure_state(user_id)
   return state
 end
 
--- READ-ONLY helper (used by get_daily_login_rewards)
+-- Read-only accessor
 function M.get_state(user_id)
   local records = nk.storage_read({
     {
@@ -56,6 +52,7 @@ function M.get_state(user_id)
     return records[1].value
   end
 
+  -- fallback safety
   return {
     current_day = 1,
     last_claim_date = ""
