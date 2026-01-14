@@ -40,11 +40,11 @@ local function rpc_claim_daily_login_reward(context, payload)
   local day = state.current_day
   local reward = DAILY_REWARDS[day] or DAILY_REWARDS[1]
 
+  -- ✅ AUTHORITATIVE WALLET UPDATE (THIS FIXES EVERYTHING)
   nk.wallet_update(
     user_id,
     { coins = reward },
-    { reason = "daily_login", day = day },
-    false
+    { reason = "daily_login", day = day }
   )
 
   day = day + 1
