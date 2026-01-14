@@ -1,6 +1,6 @@
 -- create_guest_profile.lua (PRODUCTION SAFE)
 local nk = require("nakama")
-
+local daily_login_rewards = require("daily_login_rewards") -- ✅ SAME FILE
 local STARTING_COINS = 1000
 
 local function trim(s)
@@ -28,7 +28,7 @@ local function create_guest_profile(context, payload)
   local user_id = context.user_id
 
   --------------------------------------------------
-  -- ✅ 1. Update Nakama account (fixes "Player")
+  -- 1️⃣ Update Nakama account (UNCHANGED)
   --------------------------------------------------
   nk.account_update_id(user_id, {
     username = username,
@@ -36,7 +36,7 @@ local function create_guest_profile(context, payload)
   })
 
   --------------------------------------------------
-  -- ✅ 2. Check ONE-TIME INIT FLAG
+  -- 2️⃣ One-time wallet init (UNCHANGED)
   --------------------------------------------------
   local init_flag = nk.storage_read({
     {
@@ -49,9 +49,6 @@ local function create_guest_profile(context, payload)
   local already_initialized = init_flag and #init_flag > 0
 
   if not already_initialized then
-    --------------------------------------------------
-    -- ✅ 3. Initialize wallet ONCE
-    --------------------------------------------------
     nk.wallet_update(
       user_id,
       { coins = STARTING_COINS },
@@ -59,9 +56,6 @@ local function create_guest_profile(context, payload)
       true
     )
 
-    --------------------------------------------------
-    -- ✅ 4. Save init flag
-    --------------------------------------------------
     nk.storage_write({
       {
         collection = "user_init",
@@ -78,7 +72,7 @@ local function create_guest_profile(context, payload)
   end
 
   --------------------------------------------------
-  -- ✅ 5. Profile storage (non-authoritative)
+  -- 3️⃣ Profile storage (UNCHANGED)
   --------------------------------------------------
   nk.storage_write({
     {
@@ -95,6 +89,11 @@ local function create_guest_profile(context, payload)
       permission_write = 0
     }
   })
+
+  --------------------------------------------------
+  -- 4️⃣ ✅ DAILY LOGIN STATE (ENSURE ONLY)
+  --------------------------------------------------
+  daily_login_rewards.ensure(user_id)
 
   return nk.json_encode({
     success = true,
