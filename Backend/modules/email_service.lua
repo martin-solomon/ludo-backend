@@ -1,7 +1,9 @@
-local aws_email = require "resty.aws.email" -- For lua-resty-aws-email
+local aws_email = require "resty.aws.email"
 
--- Your SES Configuration
-local config = {
+local M = {}
+
+function M.send_test_email(to, subject, body)
+  local client = aws_email.new({
     aws_key = "YOUR_AWS_ACCESS_KEY",
     aws_secret = "YOUR_AWS_SECRET_KEY",
     region = "YOUR_AWS_REGION", -- e.g., "us-east-1"
@@ -10,20 +12,16 @@ local config = {
     -- smtp_port = 587,
     -- smtp_user = "YOUR_SMTP_USERNAME",
     -- smtp_pass = "YOUR_SMTP_PASSWORD"
-}
+  })
 
-local email_config = {
+  local ok, err = client:send({
     from = "sender@yourverifieddomain.com",
-    to = "recipient@example.com",
-    subject = "Hello from Lua & SES",
-    body = "This is the body of the email sent via AWS SES."
-}
+    to = to,
+    subject = subject,
+    body = body
+  })
 
-local client = aws_email.new(config)
-local success, err = client:send(email_config)
+  return ok, err
+end
 
-if success then
-    print("Email sent successfully!")
-else
-    print("Error sending email:", err)
-ends
+return M
