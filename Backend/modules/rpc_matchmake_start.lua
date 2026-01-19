@@ -20,9 +20,8 @@ local function rpc_matchmake_start(context, payload)
         return nk.json_encode({ error = "MODE_REQUIRED" }), 400
     end
 
-    -- 3. Decide required players based on mode
-    local required_players = 0
-
+    -- 3. Mode → required players
+    local required_players
     if mode == "solo" then
         required_players = 2
     elseif mode == "clash" then
@@ -35,19 +34,17 @@ local function rpc_matchmake_start(context, payload)
         return nk.json_encode({ error = "INVALID_MODE" }), 400
     end
 
-    -- 4. Add player to matchmaking
+    -- 4. Add to matchmaker
     local ticket = nk.matchmaker_add(
-        context.user_id,           -- user_id
-        context.session_id,        -- session_id
-        {},                         -- properties
-        {                           -- query (match conditions)
-            mode = mode
-        },
-        1,                          -- min_count
-        required_players           -- max_count
+        context.user_id,
+        context.session_id,
+        {},
+        { mode = mode },
+        1,
+        required_players
     )
 
-    -- 5. Return matchmaking ticket
+    -- 5. Response
     return nk.json_encode({
         status = "searching",
         ticket = ticket,
@@ -56,5 +53,4 @@ local function rpc_matchmake_start(context, payload)
     }), 200
 end
 
--- Register RPC
 nk.register_rpc(rpc_matchmake_start, "matchmake_start")
