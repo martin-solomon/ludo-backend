@@ -92,4 +92,8 @@ safe_require("rpc_claim_daily_task")
 -----------------------------------------------
 -- match making
 -----------------------------------------------
+safe_require("rpc_create_match")
 safe_require("rpc_match_entry")
+safe_require("rpc_quick_join")
+safe_require("rpc_match_join")
+
