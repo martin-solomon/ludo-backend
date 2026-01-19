@@ -2,7 +2,7 @@ local nk = require("nakama")
 
 local MODE_PLAYERS = {
   solo = 2,
-  clash = 2,
+  clash = 3,
   solo_rush = 4,
   team_up = 4
 }
@@ -30,3 +30,4 @@ local function rpc_create_match(context, payload)
 end
 
 nk.register_rpc(rpc_create_match, "create_match")
+
