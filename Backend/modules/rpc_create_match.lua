@@ -1,26 +1,32 @@
--- rpc_create_match.lua
--- Purpose: Create an authoritative Ludo match and return match_id
-
 local nk = require("nakama")
 
+local MODE_PLAYERS = {
+  solo = 2,
+  clash = 2,
+  solo_rush = 4,
+  team_up = 4
+}
+
 local function rpc_create_match(context, payload)
-  -- Ensure authenticated user
-  if not context or not context.user_id then
-    return nk.json_encode({
-      error = "unauthorized"
-    }), 401
+  if not context.user_id then
+    return nk.json_encode({ error = "NO_SESSION" }), 401
   end
 
-  -- Create authoritative match using ludo_match handler
+  local data = nk.json_decode(payload or "{}")
+  local mode = data.mode
+
+  if not MODE_PLAYERS[mode] then
+    return nk.json_encode({ error = "INVALID_MODE" }), 400
+  end
+
   local match_id = nk.match_create("ludo_match", {
-    creator = context.user_id
+    expected_players = MODE_PLAYERS[mode],
+    mode = mode
   })
 
-  -- Return match_id to client
   return nk.json_encode({
     match_id = match_id
-  })
+  }), 200
 end
 
--- Register RPC
-nk.register_rpc(rpc_create_match, "rpc_create_match")
+nk.register_rpc(rpc_create_match, "create_match")
