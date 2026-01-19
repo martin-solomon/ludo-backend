@@ -34,17 +34,26 @@ local function rpc_matchmake_start(context, payload)
         return nk.json_encode({ error = "INVALID_MODE" }), 400
     end
 
-    -- 4. Add to matchmaker
+    -- 4. Matchmaker query (STRING, not table)
+    -- We keep it empty and rely on properties
+    local query = ""
+
+    -- 5. Matchmaker properties (TABLE)
+    local properties = {
+        mode = mode
+    }
+
+    -- 6. Add to matchmaker (CORRECT ORDER)
     local ticket = nk.matchmaker_add(
         context.user_id,
         context.session_id,
-        {},
-        { mode = mode },
+        query,
         1,
-        required_players
+        required_players,
+        properties
     )
 
-    -- 5. Response
+    -- 7. Response
     return nk.json_encode({
         status = "searching",
         ticket = ticket,
