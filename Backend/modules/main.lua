@@ -89,4 +89,7 @@ safe_require("rpc_claim_daily_login_reward")
 -----------------------------------------------
 safe_require("rpc_get_daily_tasks")
 safe_require("rpc_claim_daily_task")
-
+-----------------------------------------------
+-- match making
+-----------------------------------------------
+safe_require("rpc_match_entry")
