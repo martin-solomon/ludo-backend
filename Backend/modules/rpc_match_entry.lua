@@ -1,19 +1,15 @@
 local nk = require("nakama")
 
--- Mode → required players (FROZEN CONTRACT)
+-- Mode → expected players (FROZEN)
 local MODE_PLAYERS = {
-  solo = 2,       -- 1v1
-  clash = 3,      -- 1v1v1
-  solo_rush = 4,  -- 1v1v1v1
-  team_up = 4     -- 2v2
+  solo = 2,
+  clash = 3,
+  solo_rush = 4,
+  team_up = 4,
 }
 
--- In-memory waiting rooms (authoritative, simple, safe)
--- waiting[mode] = { match_id = string, count = number }
-local waiting = {}
-
 local function rpc_match_entry(context, payload)
-  -- 1. Session validation
+  -- 1. Session check
   if not context or not context.user_id then
     return nk.json_encode({ error = "NO_SESSION" }), 401
   end
@@ -32,54 +28,34 @@ local function rpc_match_entry(context, payload)
     return nk.json_encode({ error = "INVALID_MODE" }), 400
   end
 
-  local required = MODE_PLAYERS[mode]
+  local expected_players = MODE_PLAYERS[mode]
 
-  -- 3. Create waiting room if none
-  if not waiting[mode] then
-    local match_id = nk.match_create("ludo_match", {
-      mode = mode,
-      expected_players = required
-    })
+  -- 3. Try quick join existing match
+  local matches = nk.match_list(
+    10,
+    true,
+    "ludo_match",
+    { mode = mode },
+    expected_players,
+    expected_players
+  )
 
-    waiting[mode] = {
-      match_id = match_id,
-      count = 0
-    }
-  end
-
-  local room = waiting[mode]
-
-  -- 4. Join match
-  local ok, err = pcall(function()
-    nk.match_join(room.match_id, { context.user_id })
-  end)
-
-  if not ok then
+  if matches and #matches > 0 then
     return nk.json_encode({
-      error = "MATCH_JOIN_FAILED",
-      details = tostring(err)
-    }), 500
-  end
-
-  room.count = room.count + 1
-
-  -- 5. Room ready?
-  if room.count >= required then
-    waiting[mode] = nil
-
-    return nk.json_encode({
-      status = "MATCH_READY",
-      match_id = room.match_id,
-      players = required
+      action = "JOIN",
+      match_id = matches[1].match_id
     }), 200
   end
 
-  -- 6. Still waiting
+  -- 4. Otherwise create new match
+  local match_id = nk.match_create("ludo_match", {
+    mode = mode,
+    expected_players = expected_players
+  })
+
   return nk.json_encode({
-    status = "WAITING",
-    match_id = room.match_id,
-    joined = room.count,
-    required = required
+    action = "CREATE",
+    match_id = match_id
   }), 200
 end
 
