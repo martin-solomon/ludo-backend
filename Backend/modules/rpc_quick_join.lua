@@ -15,4 +15,4 @@ local function rpc_match_join(context, payload)
   return nk.json_encode({ status = "JOINED" })
 end
 
-nk.register_rpc(rpc_match_join, "match_join")
+nk.register_rpc(rpc_match_join, "match_quick_join")
