@@ -1,3 +1,4 @@
+-- rpc_match_entry.lua
 local nk = require("nakama")
 
 local MODE_PLAYERS = {
@@ -8,35 +9,27 @@ local MODE_PLAYERS = {
 }
 
 local function rpc_match_entry(context, payload)
-  -- 1. Auth
-  if not context or not context.user_id then
+  if not context.user_id then
     return nk.json_encode({ error = "NO_SESSION" }), 401
   end
 
-  -- 2. Parse payload
   local input = {}
   if payload and payload ~= "" then
-    local ok, decoded = pcall(nk.json_decode, payload)
-    if ok and type(decoded) == "table" then
-      input = decoded
-    end
+    input = nk.json_decode(payload)
   end
 
   local mode = input.mode
-  if not mode or not MODE_PLAYERS[mode] then
+  if not MODE_PLAYERS[mode] then
     return nk.json_encode({ error = "INVALID_MODE" }), 400
   end
 
-  -- 3. Create match ONLY (no join here)
   local match_id = nk.match_create("ludo_match", {
     mode = mode,
     expected_players = MODE_PLAYERS[mode],
-    owner = context.user_id
   })
 
   return nk.json_encode({
-    match_id = match_id,
-    mode = mode
+    match_id = match_id
   }), 200
 end
 
