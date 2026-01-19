@@ -1,20 +1,17 @@
 local nk = require("nakama")
 
 local function rpc_matchmake_start(context, payload)
-    -- Validate session
     if not context or not context.user_id then
-        return { error = "NO_SESSION" }
+        return nk.json_encode({ error = "NO_SESSION" })
     end
 
-    -- Payload is already a table
     local input = payload or {}
-
     local mode = input.mode
+
     if not mode then
-        return { error = "MODE_REQUIRED" }
+        return nk.json_encode({ error = "MODE_REQUIRED" })
     end
 
-    -- Mode → required players
     local required_players
     if mode == "solo" then
         required_players = 2
@@ -25,10 +22,9 @@ local function rpc_matchmake_start(context, payload)
     elseif mode == "team_up" then
         required_players = 4
     else
-        return { error = "INVALID_MODE" }
+        return nk.json_encode({ error = "INVALID_MODE" })
     end
 
-    -- Add to matchmaker
     local ticket = nk.matchmaker_add(
         context.user_id,
         context.session_id,
@@ -38,13 +34,12 @@ local function rpc_matchmake_start(context, payload)
         { mode = mode }
     )
 
-    -- SUCCESS: return ONE table only
-    return {
+    return nk.json_encode({
         status = "searching",
         ticket = ticket,
         mode = mode,
         players_required = required_players
-    }
+    })
 end
 
 nk.register_rpc(rpc_matchmake_start, "matchmake_start")
