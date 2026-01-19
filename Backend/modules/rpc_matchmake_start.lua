@@ -5,9 +5,16 @@ local function rpc_matchmake_start(context, payload)
         return nk.json_encode({ error = "NO_SESSION" })
     end
 
-    local input = payload or {}
-    local mode = input.mode
+    -- ✅ Decode payload manually (ALWAYS REQUIRED)
+    local input = {}
+    if payload and payload ~= "" then
+        local ok, decoded = pcall(nk.json_decode, payload)
+        if ok and type(decoded) == "table" then
+            input = decoded
+        end
+    end
 
+    local mode = input.mode
     if not mode then
         return nk.json_encode({ error = "MODE_REQUIRED" })
     end
