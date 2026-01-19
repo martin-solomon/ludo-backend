@@ -15,21 +15,19 @@ local function rpc_matchmake_cancel(context, payload)
         end
     end
 
-    -- 3. Validate ticket
     local ticket = input.ticket
     if not ticket then
         return nk.json_encode({ error = "TICKET_REQUIRED" }), 400
     end
 
-    -- 4. Remove from matchmaking
+    -- 3. Remove from matchmaker
     nk.matchmaker_remove(ticket)
 
-    -- 5. Return success
+    -- 4. Response
     return nk.json_encode({
         status = "cancelled",
         ticket = ticket
     }), 200
 end
 
--- Register RPC
 nk.register_rpc(rpc_matchmake_cancel, "matchmake_cancel")
