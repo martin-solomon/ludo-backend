@@ -1,81 +1,71 @@
 local nk = require("nakama")
 
 -- In-memory waiting matches
--- Structure:
--- waiting_matches[mode] = {
---   match_id = string,
---   expected_players = number,
---   joined = number
--- }
-local waiting_matches = {}
+-- waiting[mode] = { match_id = "...", joined = number, expected = number }
+local waiting = {}
 
--- Mode → player count mapping (FROZEN)
 local MODE_PLAYERS = {
-    solo = 2,
-    clash = 3,
-    solo_rush = 4,
-    team_up = 4,
+  solo = 2,
+  clash = 3,
+  solo_rush = 4,
+  team_up = 4,
 }
 
 local function rpc_match_entry(context, payload)
-    -- 1. Validate session
-    if not context or not context.user_id then
-        return nk.json_encode({ error = "NO_SESSION" })
+  -- 1. Validate session
+  if not context or not context.user_id then
+    return nk.json_encode({ error = "NO_SESSION" })
+  end
+
+  -- 2. Parse payload
+  local input = {}
+  if payload and payload ~= "" then
+    local ok, decoded = pcall(nk.json_decode, payload)
+    if ok and type(decoded) == "table" then
+      input = decoded
     end
+  end
 
-    -- 2. Parse payload
-    local input = {}
-    if payload and payload ~= "" then
-        local ok, decoded = pcall(nk.json_decode, payload)
-        if ok and type(decoded) == "table" then
-            input = decoded
-        end
-    end
+  local mode = input.mode
+  if not mode or not MODE_PLAYERS[mode] then
+    return nk.json_encode({ error = "INVALID_MODE" })
+  end
 
-    local mode = input.mode
-    if not mode or not MODE_PLAYERS[mode] then
-        return nk.json_encode({ error = "INVALID_MODE" })
-    end
+  local expected = MODE_PLAYERS[mode]
 
-    local expected_players = MODE_PLAYERS[mode]
+  -- 3. Find or create match
+  local entry = waiting[mode]
 
-    -- 3. Reuse waiting match if exists
-    local waiting = waiting_matches[mode]
-
-    if waiting then
-        waiting.joined = waiting.joined + 1
-
-        -- If match is now full, clear waiting slot
-        if waiting.joined >= waiting.expected_players then
-            waiting_matches[mode] = nil
-        end
-
-        return nk.json_encode({
-            match_id = waiting.match_id,
-            mode = mode,
-            status = "joined_existing"
-        })
-    end
-
-    -- 4. Create new match
+  if not entry or entry.joined >= expected then
     local match_id = nk.match_create("ludo_match", {
-        mode = mode,
-        expected_players = expected_players,
-        owner = context.user_id
+      mode = mode,
+      expected_players = expected
     })
 
-    -- 5. Register as waiting match
-    waiting_matches[mode] = {
-        match_id = match_id,
-        expected_players = expected_players,
-        joined = 1
+    entry = {
+      match_id = match_id,
+      joined = 0,
+      expected = expected
     }
 
-    return nk.json_encode({
-        match_id = match_id,
-        mode = mode,
-        status = "created_new"
-    })
+    waiting[mode] = entry
+  end
+
+  -- 4. Join match
+  nk.match_join(entry.match_id, context.user_id)
+
+  entry.joined = entry.joined + 1
+
+  -- 5. Cleanup when full
+  if entry.joined >= entry.expected then
+    waiting[mode] = nil
+  end
+
+  -- 6. Return match_id
+  return nk.json_encode({
+    match_id = entry.match_id,
+    mode = mode
+  })
 end
 
 nk.register_rpc(rpc_match_entry, "match_entry")
