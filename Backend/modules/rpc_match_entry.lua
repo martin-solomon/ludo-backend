@@ -1,7 +1,12 @@
--- rpc_match_entry.lua
--- FINAL, SAFE, MANUAL MATCH ENTRY (NO MATCHMAKER, NO SIGNALS)
-
 local nk = require("nakama")
+
+-- Mode → required players
+local MODE_PLAYERS = {
+  solo = 2,
+  clash = 3,
+  solo_rush = 4,
+  team_up = 4,
+}
 
 local function rpc_match_entry(context, payload)
   -- 1. Validate session
@@ -19,36 +24,40 @@ local function rpc_match_entry(context, payload)
   end
 
   local mode = input.mode
-  if not mode then
-    return nk.json_encode({ error = "MODE_REQUIRED" }), 400
+  if not mode or not MODE_PLAYERS[mode] then
+    return nk.json_encode({ error = "INVALID_MODE" }), 400
   end
 
-  -- 3. Try to find an open match
+  local required_players = MODE_PLAYERS[mode]
+
+  -- 3. Try to find existing open match
   local matches = nk.match_list(
     10,                 -- limit
     false,              -- authoritative
     nil,                -- label
-    nil,                -- min_size (IMPORTANT: nil)
-    nil                 -- max_size
+    nil,                -- min_size
+    required_players    -- max_size
   )
 
-  for _, m in ipairs(matches) do
-    if m.label == mode then
+  for _, match in ipairs(matches) do
+    if match.size < required_players then
       -- Join existing match
+      nk.match_join(match.match_id, context.user_id, context.username)
       return nk.json_encode({
-        action = "join",
-        match_id = m.match_id
+        action = "joined",
+        match_id = match.match_id
       }), 200
     end
   end
 
-  -- 4. Create new match
+  -- 4. No match found → create new one
   local match_id = nk.match_create("ludo_match", {
-    mode = mode
+    mode = mode,
+    expected_players = required_players
   })
 
   return nk.json_encode({
-    action = "create",
+    action = "created",
     match_id = match_id
   }), 200
 end
