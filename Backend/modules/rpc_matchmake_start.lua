@@ -5,7 +5,7 @@ local function rpc_matchmake_start(context, payload)
         return nk.json_encode({ error = "NO_SESSION" })
     end
 
-    -- ✅ Decode payload manually (ALWAYS REQUIRED)
+    -- Decode payload
     local input = {}
     if payload and payload ~= "" then
         local ok, decoded = pcall(nk.json_decode, payload)
@@ -32,14 +32,27 @@ local function rpc_matchmake_start(context, payload)
         return nk.json_encode({ error = "INVALID_MODE" })
     end
 
-    local ticket = nk.matchmaker_add(
+    -- 🔐 SAFETY CHECK
+    if type(nk.matchmaker_add) ~= "function" then
+        nk.logger_error("matchmaker_add is not a function")
+        return nk.json_encode({ error = "MATCHMAKER_UNAVAILABLE" })
+    end
+
+    local ok, ticket = pcall(
+        nk.matchmaker_add,
         context.user_id,
         context.session_id,
         "",
         1,
         required_players,
-        { mode = mode }
+        { mode = mode },
+        {}
     )
+
+    if not ok then
+        nk.logger_error("matchmaker_add failed: " .. tostring(ticket))
+        return nk.json_encode({ error = "MATCHMAKER_FAILED" })
+    end
 
     return nk.json_encode({
         status = "searching",
