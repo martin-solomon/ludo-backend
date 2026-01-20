@@ -17,11 +17,15 @@ local function rpc_match_join(context, payload)
     return nk.json_encode({ error = "MATCH_ID_REQUIRED" })
   end
 
-  -- Join the match
-  nk.match_join(input.match_id, context.user_id, context.session_id)
+  -- Just validate match exists
+  local matches = nk.match_list(1, true, nil, nil, nil, { match_id = input.match_id })
+  if not matches or #matches == 0 then
+    return nk.json_encode({ error = "MATCH_NOT_FOUND" })
+  end
 
+  -- DO NOT JOIN HERE
   return nk.json_encode({
-    status = "JOINED",
+    status = "OK",
     match_id = input.match_id
   })
 end
