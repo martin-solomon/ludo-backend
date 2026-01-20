@@ -47,12 +47,17 @@ if not match_mod then
     "main.lua: ludo_match not loaded or returned nil: " .. tostring(match_err)
   )
 end
+
 ------------------------------------------------
 -- 3.5) Matchmaker → Match bridge (REQUIRED)
 ------------------------------------------------
 
-nk.register_matchmaker_matched(function(context, matched_users)
-  -- All matched users share same mode
+-- ✅ MUST be a named function (NOT anonymous)
+local function on_matchmaker_matched(context, matched_users)
+  if not matched_users or #matched_users == 0 then
+    return
+  end
+
   local mode = matched_users[1].properties.mode or "solo_1v1"
 
   -- Create authoritative match
@@ -60,17 +65,20 @@ nk.register_matchmaker_matched(function(context, matched_users)
     mode = mode
   })
 
-  -- Join all matched users into the match
+  -- Join all matched users
   for _, user in ipairs(matched_users) do
     nk.match_join(match_id, user.user_id, user.session_id)
   end
 
   nk.logger_info(
     "Matchmaker created ludo_match " .. match_id ..
-    " for mode=" .. mode ..
-    " players=" .. tostring(#matched_users)
+    " | mode=" .. mode ..
+    " | players=" .. #matched_users
   )
-end)
+end
+
+-- ✅ Register ONLY the function reference
+nk.register_matchmaker_matched(on_matchmaker_matched)
 
 ------------------------------------------------
 -- 4) Match-related RPCs
@@ -86,31 +94,25 @@ for _, m in ipairs(rpc_late) do
 end
 
 ------------------------------------------------
--- 5) ✅ LEADERBOARD-RELATED MODULES (ONLY ADDITION)
+-- 5) Leaderboard-related modules
 ------------------------------------------------
--- Updates wins + leaderboard after ONLINE match
 safe_require("apply_match_rewards")
-
--- Fetch leaderboard for frontend
 safe_require("rpc_get_leaderboard")
-
 safe_require("rpc_dev_init_leaderboard")
-
 
 ------------------------------------------------
 -- 6) Startup confirmation
 ------------------------------------------------
 nk.logger_info("main.lua loaded: runtime modules required and RPCs registered.")
 
------------------------------------------------
--- daily login rewards
------------------------------------------------
+------------------------------------------------
+-- Daily login rewards
+------------------------------------------------
 safe_require("rpc_get_daily_login_rewards")
 safe_require("rpc_claim_daily_login_reward")
 
------------------------------------------------
--- daily tasks (System-2)
------------------------------------------------
+------------------------------------------------
+-- Daily tasks (System-2)
+------------------------------------------------
 safe_require("rpc_get_daily_tasks")
 safe_require("rpc_claim_daily_task")
-
