@@ -5,14 +5,9 @@ local function rpc_quick_join(context, payload)
     return nk.json_encode({ error = "unauthorized" }), 401
   end
 
-  local data = {}
-  if payload then
-    data = nk.json_decode(payload)
-  end
-
+  local data = payload and nk.json_decode(payload) or {}
   local mode = data.mode or "solo_1v1"
 
-  -- Expected players per mode
   local max_count = ({
     solo_1v1 = 2,
     duo_3p   = 3,
@@ -23,9 +18,7 @@ local function rpc_quick_join(context, payload)
   nk.matchmaker_add(
     context.user_id,
     context.session_id,
-    {
-      mode = mode
-    },
+    { mode = mode },
     max_count,
     max_count,
     1
