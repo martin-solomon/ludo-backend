@@ -2,15 +2,34 @@ local nk = require("nakama")
 
 local M = {}
 
--- --------------------------------------------------
+--------------------------------------------------
+-- HELPERS
+--------------------------------------------------
+
+local function get_expected_players(mode)
+  if mode == "solo_1v1" then return 2 end
+  if mode == "duo_3p" then return 3 end
+  if mode == "solo_4p" then return 4 end
+  if mode == "team_2v2" then return 4 end
+  return 2
+end
+
+local SEAT_COLORS = {
+  [1] = "RED",
+  [2] = "BLUE",
+  [3] = "GREEN",
+  [4] = "YELLOW"
+}
+
+--------------------------------------------------
 -- MATCH INIT
--- --------------------------------------------------
+--------------------------------------------------
 function M.match_init(context, params)
   local state = {
     match_id = context.match_id,
     mode = params.mode or "solo_1v1",
 
-    players = {},     -- user_id -> { user_id, seat, color, skin_id, connected }
+    players = {},     -- user_id -> player data
     seats = {},       -- seat_index -> user_id
 
     current_turn = 1,
@@ -27,9 +46,9 @@ function M.match_init(context, params)
   return state, 1, "ludo_match"
 end
 
--- --------------------------------------------------
+--------------------------------------------------
 -- MATCH JOIN ATTEMPT
--- --------------------------------------------------
+--------------------------------------------------
 function M.match_join_attempt(context, dispatcher, tick, state, presence, metadata)
   if state.status ~= "WAITING" then
     return false, "MATCH_ALREADY_STARTED"
@@ -37,29 +56,64 @@ function M.match_join_attempt(context, dispatcher, tick, state, presence, metada
   return true
 end
 
--- --------------------------------------------------
+--------------------------------------------------
 -- MATCH JOIN
--- --------------------------------------------------
+--------------------------------------------------
 function M.match_join(context, dispatcher, tick, state, presences)
+  -- Add players safely
   for _, p in ipairs(presences) do
-    state.players[p.user_id] = {
-      user_id = p.user_id,
-      username = p.username,
-      session_id = p.session_id,
-      seat = nil,
-      color = nil,
-      skin_id = p.metadata and p.metadata.skin_id or "default",
-      connected = true,
-      finished = false
-    }
+    if not state.players[p.user_id] then
+      state.players[p.user_id] = {
+        user_id = p.user_id,
+        username = p.username,
+        session_id = p.session_id,
+        seat = nil,
+        color = nil,
+        skin_id = p.metadata and p.metadata.skin_id or "default",
+        connected = true,
+        finished = false
+      }
+    else
+      state.players[p.user_id].connected = true
+    end
+  end
+
+  -- Count players
+  local player_count = 0
+  for _ in pairs(state.players) do
+    player_count = player_count + 1
+  end
+
+  local expected_players = get_expected_players(state.mode)
+
+  -- Start match if ready
+  if state.status == "WAITING" and player_count == expected_players then
+    local seat = 1
+    for user_id, player in pairs(state.players) do
+      player.seat = seat
+      player.color = SEAT_COLORS[seat]
+      state.seats[seat] = user_id
+      seat = seat + 1
+    end
+
+    state.current_turn = 1
+    state.turn_phase = "TURN_START"
+    state.status = "RUNNING"
+    state.consecutive_six = 0
+    state.dice_value = nil
+
+    dispatcher.broadcast_message(1, nk.json_encode({
+      type = "GAME_START",
+      state = state
+    }))
   end
 
   return state
 end
 
--- --------------------------------------------------
+--------------------------------------------------
 -- MATCH LEAVE
--- --------------------------------------------------
+--------------------------------------------------
 function M.match_leave(context, dispatcher, tick, state, presences)
   for _, p in ipairs(presences) do
     if state.players[p.user_id] then
@@ -69,29 +123,27 @@ function M.match_leave(context, dispatcher, tick, state, presences)
   return state
 end
 
--- --------------------------------------------------
+--------------------------------------------------
 -- MATCH LOOP (CORE ENGINE TICK)
--- --------------------------------------------------
+--------------------------------------------------
 function M.match_loop(context, dispatcher, tick, state, messages)
-  -- We do NOTHING here yet.
-  -- Next steps will add:
-  -- - turn start
-  -- - timers
-  -- - dice
-  -- - moves
+  -- STEP 3 will start here:
+  -- - Turn start
+  -- - Turn timer
+  -- - Auto-roll
   return state
 end
 
--- --------------------------------------------------
+--------------------------------------------------
 -- MATCH SIGNAL (OPTIONAL)
--- --------------------------------------------------
+--------------------------------------------------
 function M.match_signal(context, dispatcher, tick, state, data)
   return state, data
 end
 
--- --------------------------------------------------
+--------------------------------------------------
 -- MATCH TERMINATE
--- --------------------------------------------------
+--------------------------------------------------
 function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
   return state
 end
