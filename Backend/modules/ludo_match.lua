@@ -57,6 +57,48 @@ local function get_valid_moves(state)
 
   return valid
 end
+--------------------------------------------------
+-- STEP 6: PAWN MOVEMENT HELPERS
+--------------------------------------------------
+
+local function compute_move_path(start_pos, dice)
+  local path = {}
+
+  -- Pawn leaving base
+  if start_pos == -1 then
+    table.insert(path, 0)
+    return path
+  end
+
+  for i = 1, dice do
+    table.insert(path, start_pos + i)
+  end
+
+  return path
+end
+
+local function move_pawn(state, dispatcher, pawn_index)
+  local seat = state.current_turn
+  local start_pos = state.pawns[seat][pawn_index]
+  local dice = state.dice_value
+
+  local path = compute_move_path(start_pos, dice)
+  local final_pos = path[#path]
+
+  -- Update state
+  state.pawns[seat][pawn_index] = final_pos
+  state.turn_phase = "MOVING"
+
+  dispatcher.broadcast_message(1, nk.json_encode({
+    type = "PAWN_MOVING",
+    seat = seat,
+    pawn = pawn_index,
+    path = path
+  }))
+
+  -- Movement ends immediately on server side
+  state.turn_phase = "TURN_END"
+end
 
 --------------------------------------------------
 -- STEP 4: DICE HELPERS
@@ -297,24 +339,33 @@ end
 --------------------------------------------------
 function M.match_signal(context, dispatcher, tick, state, data)
   local msg = nk.json_decode(data)
+  local user_id = context.user_id
+  local current_user = state.seats[state.current_turn]
 
+  -- Manual dice roll
   if msg.type == "ROLL_DICE" then
-    local user_id = context.user_id
-    local current_user = state.seats[state.current_turn]
-
-    if user_id ~= current_user then
-      return state
-    end
-
-    if state.turn_phase ~= "WAIT_DICE" then
-      return state
-    end
-
+    if user_id ~= current_user then return state end
+    if state.turn_phase ~= "WAIT_DICE" then return state end
     roll_dice(state, dispatcher, "MANUAL")
+    return state
+  end
+
+  -- Pawn selection
+  if msg.type == "SELECT_PAWN" then
+    if user_id ~= current_user then return state end
+    if state.turn_phase ~= "WAIT_PAWN_SELECT" then return state end
+
+    local pawn_index = msg.pawn
+    state.selected_pawn = pawn_index
+    state.turn_phase = "PAWN_SELECTED"
+
+    move_pawn(state, dispatcher, pawn_index)
+    return state
   end
 
   return state
 end
+
 
 --------------------------------------------------
 -- MATCH TERMINATE
@@ -324,3 +375,4 @@ function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
 end
 
 return M
+
