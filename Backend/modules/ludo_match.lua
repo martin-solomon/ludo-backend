@@ -151,13 +151,13 @@ function M.match_loop(context, dispatcher, tick, state, messages)
     return state
   end
 
-  -- STEP 3A: Start turn if needed
+  -- STEP 3A: Start turn
   if state.turn_phase == "TURN_START" then
     start_turn(state, dispatcher)
     return state
   end
 
-  -- STEP 3B: Handle turn timeout
+  -- STEP 3B: Waiting for dice roll
   if state.turn_phase == "WAIT_DICE" then
     if os.time() >= state.turn_deadline then
       dispatcher.broadcast_message(1, nk.json_encode({
@@ -165,9 +165,22 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         player_id = state.seats[state.current_turn]
       }))
 
-      -- Step 4 will hook auto-roll here
+      -- For now: directly move to next turn
       state.turn_phase = "TURN_END"
     end
+  end
+
+  -- STEP 3C: End turn (temporary logic)
+  if state.turn_phase == "TURN_END" then
+    -- move to next player safely
+    state.current_turn = state.current_turn + 1
+    if state.current_turn > #state.seats then
+      state.current_turn = 1
+    end
+
+    state.consecutive_six = 0
+    state.dice_value = nil
+    state.turn_phase = "TURN_START"
   end
 
   return state
@@ -189,4 +202,5 @@ function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
 end
 
 return M
+
 
