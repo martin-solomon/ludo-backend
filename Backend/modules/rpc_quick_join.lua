@@ -1,6 +1,8 @@
 local nk = require("nakama")
 
-local function rpc_quick_join(context, payload)
+local M = {}
+
+function M.rpc_quick_join(context, payload)
   if not context.user_id then
     return nk.json_encode({ error = "unauthorized" }), 401
   end
@@ -30,4 +32,6 @@ local function rpc_quick_join(context, payload)
   })
 end
 
-nk.register_rpc(rpc_quick_join, "rpc_quick_join")
+nk.register_rpc(M.rpc_quick_join, "rpc_quick_join")
+
+return M
