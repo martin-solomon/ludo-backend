@@ -19,15 +19,14 @@ end
 --------------------------------------------------
 
 local FINAL_HOME_POS = 100
-local PAWNS_PER_PLAYER = 4
 
 --------------------------------------------------
--- STEP 7: SAFE TILES
+-- SAFE TILES (STEP 7)
 --------------------------------------------------
 
 local SAFE_TILES = {
-  [0] = true, [8] = true, [13] = true, [21] = true,
-  [26] = true, [34] = true, [39] = true, [47] = true
+  [0]=true,[8]=true,[13]=true,[21]=true,
+  [26]=true,[34]=true,[39]=true,[47]=true
 }
 
 local function is_safe_tile(pos)
@@ -35,7 +34,7 @@ local function is_safe_tile(pos)
 end
 
 --------------------------------------------------
--- STEP 5: VALID MOVE HELPERS
+-- VALID MOVE HELPERS (STEP 5)
 --------------------------------------------------
 
 local function can_leave_base(dice)
@@ -43,61 +42,74 @@ local function can_leave_base(dice)
 end
 
 local function can_pawn_move(pos, dice)
-  if pos == "HOME" then
-    return false
-  end
-  if pos == -1 then
-    return can_leave_base(dice)
-  end
-  if pos + dice > FINAL_HOME_POS then
-    return false
-  end
+  if pos == "HOME" then return false end
+  if pos == -1 then return can_leave_base(dice) end
+  if pos + dice > FINAL_HOME_POS then return false end
   return true
 end
 
 local function get_valid_moves(state)
-  local seat = state.current_turn
+  local pawns = state.pawns[state.current_turn]
   local dice = state.dice_value
-  local pawns = state.pawns[seat]
-
   local valid = {}
-  for pawn_index, pos in pairs(pawns) do
+
+  for i,pos in pairs(pawns) do
     if can_pawn_move(pos, dice) then
-      table.insert(valid, pawn_index)
+      table.insert(valid, i)
     end
   end
   return valid
 end
 
 --------------------------------------------------
--- STEP 6–8: MOVEMENT, KILL, HOME
+-- STEP 9: MATCH END HELPERS
+--------------------------------------------------
+
+local function should_end_match(state)
+  local total = get_expected_players(state.mode)
+  return state.finished_count >= (total - 1)
+end
+
+local function end_match(state, dispatcher)
+  if state.match_ended then return end
+  state.match_ended = true
+
+  -- Assign last rank automatically
+  for seat,_ in pairs(state.seats) do
+    if not state.player_rank[seat] then
+      state.finished_count = state.finished_count + 1
+      state.player_rank[seat] = state.finished_count
+    end
+  end
+
+  dispatcher.broadcast_message(1, nk.json_encode({
+    type = "GAME_END",
+    reason = "NORMAL_END",
+    ranks = state.player_rank
+  }))
+end
+
+--------------------------------------------------
+-- MOVE / KILL / HOME (STEP 6–8)
 --------------------------------------------------
 
 local function compute_move_path(start_pos, dice)
   local path = {}
-
   if start_pos == -1 then
     table.insert(path, 0)
     return path
   end
-
-  for i = 1, dice do
-    table.insert(path, start_pos + i)
-  end
-
+  for i=1,dice do table.insert(path, start_pos+i) end
   return path
 end
 
 local function find_opponent_pawns(state, seat, pos)
   local victims = {}
-  for other_seat, pawns in pairs(state.pawns) do
-    if other_seat ~= seat then
-      for pawn_index, pawn_pos in pairs(pawns) do
-        if pawn_pos == pos then
-          table.insert(victims, {
-            seat = other_seat,
-            pawn = pawn_index
-          })
+  for s,pawns in pairs(state.pawns) do
+    if s ~= seat then
+      for i,p in pairs(pawns) do
+        if p == pos then
+          table.insert(victims, {seat=s, pawn=i})
         end
       end
     end
@@ -105,126 +117,94 @@ local function find_opponent_pawns(state, seat, pos)
   return victims
 end
 
-local function kill_pawn(state, dispatcher, victim)
-  state.pawns[victim.seat][victim.pawn] = -1
-
+local function kill_pawn(state, dispatcher, v)
+  state.pawns[v.seat][v.pawn] = -1
   dispatcher.broadcast_message(1, nk.json_encode({
-    type = "PAWN_KILLED",
-    seat = victim.seat,
-    pawn = victim.pawn
+    type="PAWN_KILLED", seat=v.seat, pawn=v.pawn
   }))
 end
 
 local function check_player_finished(state, seat)
-  for _, pos in pairs(state.pawns[seat]) do
-    if pos ~= "HOME" then
-      return false
-    end
+  for _,pos in pairs(state.pawns[seat]) do
+    if pos ~= "HOME" then return false end
   end
   return true
 end
 
-local function move_pawn(state, dispatcher, pawn_index)
+local function move_pawn(state, dispatcher, pawn)
   local seat = state.current_turn
-  local start_pos = state.pawns[seat][pawn_index]
+  local start = state.pawns[seat][pawn]
   local dice = state.dice_value
 
-  local path = compute_move_path(start_pos, dice)
-  local final_pos = path[#path]
+  local path = compute_move_path(start, dice)
+  local final = path[#path]
 
-  -- Home logic
-  if final_pos == FINAL_HOME_POS then
-    final_pos = "HOME"
+  if final == FINAL_HOME_POS then
+    final = "HOME"
     state.extra_turn = true
   end
 
-  state.pawns[seat][pawn_index] = final_pos
+  state.pawns[seat][pawn] = final
 
   dispatcher.broadcast_message(1, nk.json_encode({
-    type = "PAWN_MOVING",
-    seat = seat,
-    pawn = pawn_index,
-    path = path,
-    final = final_pos
+    type="PAWN_MOVING", seat=seat, pawn=pawn, path=path, final=final
   }))
 
-  -- Kill logic
-  if final_pos ~= "HOME" and not is_safe_tile(final_pos) then
-    local victims = find_opponent_pawns(state, seat, final_pos)
+  if final ~= "HOME" and not is_safe_tile(final) then
+    local victims = find_opponent_pawns(state, seat, final)
     if #victims > 0 then
       kill_pawn(state, dispatcher, victims[1])
       state.extra_turn = true
     end
   end
 
-  -- Finish logic
-  if final_pos == "HOME" and check_player_finished(state, seat) then
+  if final == "HOME" and check_player_finished(state, seat) then
     state.finished_count = state.finished_count + 1
     state.player_rank[seat] = state.finished_count
 
     dispatcher.broadcast_message(1, nk.json_encode({
-      type = "PLAYER_FINISHED",
-      seat = seat,
-      rank = state.player_rank[seat]
+      type="PLAYER_FINISHED", seat=seat, rank=state.player_rank[seat]
     }))
+
+    if should_end_match(state) then
+      end_match(state, dispatcher)
+      return
+    end
   end
 
   state.turn_phase = "TURN_END"
 end
 
 --------------------------------------------------
--- STEP 4: DICE
+-- DICE (STEP 4)
 --------------------------------------------------
 
 local function roll_dice(state, dispatcher, reason)
-  local dice = math.random(1, 6)
+  local dice = math.random(1,6)
   state.dice_value = dice
-
-  if dice == 6 then
-    state.consecutive_six = state.consecutive_six + 1
-  else
-    state.consecutive_six = 0
-  end
+  state.consecutive_six = (dice==6) and state.consecutive_six+1 or 0
 
   dispatcher.broadcast_message(1, nk.json_encode({
-    type = "DICE_ROLLED",
-    value = dice,
-    seat = state.current_turn,
-    reason = reason or "MANUAL"
+    type="DICE_ROLLED", value=dice, seat=state.current_turn, reason=reason
   }))
 
   if state.consecutive_six >= 3 then
     dispatcher.broadcast_message(1, nk.json_encode({
-      type = "THREE_SIX_RULE",
-      seat = state.current_turn
+      type="THREE_SIX_RULE", seat=state.current_turn
     }))
     state.consecutive_six = 0
     state.turn_phase = "TURN_END"
     return
   end
 
-  local valid_moves = get_valid_moves(state)
-
-  if #valid_moves == 0 then
-    dispatcher.broadcast_message(1, nk.json_encode({
-      type = "NO_VALID_MOVE",
-      seat = state.current_turn
-    }))
-    state.turn_phase = "TURN_END"
-    return
-  end
-
-  if #valid_moves == 1 then
-    move_pawn(state, dispatcher, valid_moves[1])
-    return
-  end
+  local valid = get_valid_moves(state)
+  if #valid == 0 then state.turn_phase="TURN_END"; return end
+  if #valid == 1 then move_pawn(state, dispatcher, valid[1]); return end
 
   dispatcher.broadcast_message(1, nk.json_encode({
-    type = "SELECT_PAWN",
-    seat = state.current_turn,
-    pawns = valid_moves
+    type="SELECT_PAWN", seat=state.current_turn, pawns=valid
   }))
-  state.turn_phase = "WAIT_PAWN_SELECT"
+  state.turn_phase="WAIT_PAWN_SELECT"
 end
 
 --------------------------------------------------
@@ -232,7 +212,7 @@ end
 --------------------------------------------------
 
 function M.match_init(context, params)
-  local state = {
+  return {
     match_id = context.match_id,
     mode = params.mode or "solo_1v1",
 
@@ -243,137 +223,82 @@ function M.match_init(context, params)
     current_turn = 1,
     turn_phase = "INIT",
 
-    consecutive_six = 0,
     dice_value = nil,
+    consecutive_six = 0,
     turn_deadline = 0,
 
     extra_turn = false,
     finished_count = 0,
     player_rank = {},
+    match_ended = false,
 
     status = "WAITING"
-  }
-
-  return state, 1, "ludo_match"
+  },1,"ludo_match"
 end
 
 --------------------------------------------------
--- MATCH JOIN ATTEMPT
+-- JOIN / LOOP / SIGNAL
 --------------------------------------------------
 
-function M.match_join_attempt(context, dispatcher, tick, state)
-  if state.status ~= "WAITING" then
-    return false, "MATCH_ALREADY_STARTED"
-  end
-  return true
+function M.match_join_attempt(_,_,_,state)
+  return state.status == "WAITING"
 end
 
---------------------------------------------------
--- MATCH JOIN
---------------------------------------------------
-
-function M.match_join(context, dispatcher, tick, state, presences)
-  for _, p in ipairs(presences) do
-    if not state.players[p.user_id] then
-      state.players[p.user_id] = {
-        user_id = p.user_id,
-        username = p.username
-      }
-    end
+function M.match_join(_,dispatcher,_,state,presences)
+  for _,p in ipairs(presences) do
+    state.players[p.user_id] = true
   end
 
-  local count = 0
-  for _ in pairs(state.players) do count = count + 1 end
-
-  if state.status == "WAITING" and count == get_expected_players(state.mode) then
-    local seat = 1
-    for _, _ in pairs(state.players) do
-      state.seats[seat] = true
-      state.pawns[seat] = { -1, -1, -1, -1 }
-      seat = seat + 1
+  local count=0 for _ in pairs(state.players) do count=count+1 end
+  if state.status=="WAITING" and count==get_expected_players(state.mode) then
+    local s=1
+    for _ in pairs(state.players) do
+      state.seats[s]=true
+      state.pawns[s]={-1,-1,-1,-1}
+      s=s+1
     end
-
-    state.status = "RUNNING"
-    state.turn_phase = "TURN_START"
-
-    dispatcher.broadcast_message(1, nk.json_encode({
-      type = "GAME_START",
-      state = state
-    }))
+    state.status="RUNNING"
+    state.turn_phase="TURN_START"
+    dispatcher.broadcast_message(1,nk.json_encode({type="GAME_START"}))
   end
-
   return state
 end
-
---------------------------------------------------
--- TURN TIMER
---------------------------------------------------
 
 local TURN_TIME_SECONDS = 12
 
-local function start_turn(state, dispatcher)
-  local seat = state.current_turn
-  state.turn_phase = "WAIT_DICE"
-  state.turn_deadline = os.time() + TURN_TIME_SECONDS
+function M.match_loop(_,dispatcher,_,state)
+  if state.status~="RUNNING" or state.match_ended then return state end
 
-  dispatcher.broadcast_message(1, nk.json_encode({
-    type = "TURN_START",
-    seat = seat,
-    deadline = state.turn_deadline
-  }))
-end
+  if state.turn_phase=="TURN_START" then
+    state.turn_phase="WAIT_DICE"
+    state.turn_deadline=os.time()+TURN_TIME_SECONDS
 
---------------------------------------------------
--- MATCH LOOP
---------------------------------------------------
-
-function M.match_loop(context, dispatcher, tick, state)
-  if state.status ~= "RUNNING" then return state end
-
-  if state.turn_phase == "TURN_START" then
-    start_turn(state, dispatcher)
-
-  elseif state.turn_phase == "WAIT_DICE" and os.time() >= state.turn_deadline then
+  elseif state.turn_phase=="WAIT_DICE" and os.time()>=state.turn_deadline then
     roll_dice(state, dispatcher, "AUTO")
 
-  elseif state.turn_phase == "TURN_END" then
+  elseif state.turn_phase=="TURN_END" then
     if state.extra_turn then
-      state.extra_turn = false
-      state.turn_phase = "TURN_START"
-      return state
+      state.extra_turn=false
+      state.turn_phase="TURN_START"
+    else
+      state.current_turn = state.current_turn % #state.seats + 1
+      state.turn_phase="TURN_START"
     end
-
-    state.current_turn = state.current_turn % #state.seats + 1
-    state.turn_phase = "TURN_START"
   end
 
   return state
 end
 
---------------------------------------------------
--- CLIENT INPUT
---------------------------------------------------
-
-function M.match_signal(context, dispatcher, tick, state, data)
-  local msg = nk.json_decode(data)
-  local current = state.current_turn
-
-  if msg.type == "ROLL_DICE" and state.turn_phase == "WAIT_DICE" then
+function M.match_signal(_,dispatcher,_,state,data)
+  local msg=nk.json_decode(data)
+  if msg.type=="ROLL_DICE" and state.turn_phase=="WAIT_DICE" then
     roll_dice(state, dispatcher, "MANUAL")
-
-  elseif msg.type == "SELECT_PAWN" and state.turn_phase == "WAIT_PAWN_SELECT" then
+  elseif msg.type=="SELECT_PAWN" and state.turn_phase=="WAIT_PAWN_SELECT" then
     move_pawn(state, dispatcher, msg.pawn)
   end
-
   return state
 end
 
---------------------------------------------------
--- MATCH TERMINATE
---------------------------------------------------
-
-function M.match_terminate(context, dispatcher, tick, state)
-  return state
-end
+function M.match_terminate() end
 
 return M
