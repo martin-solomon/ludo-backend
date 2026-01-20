@@ -21,6 +21,7 @@ local SEAT_COLORS = {
   [4] = "YELLOW"
 }
 
+
 --------------------------------------------------
 -- MATCH INIT
 --------------------------------------------------
@@ -122,17 +123,56 @@ function M.match_leave(context, dispatcher, tick, state, presences)
   end
   return state
 end
+--------------------------
+-- match loop helper
+--------------------------
+local TURN_TIME_SECONDS = 12
+
+local function start_turn(state, dispatcher)
+  local current_seat = state.current_turn
+  local current_user_id = state.seats[current_seat]
+
+  state.turn_phase = "WAIT_DICE"
+  state.turn_deadline = os.time() + TURN_TIME_SECONDS
+
+  dispatcher.broadcast_message(1, nk.json_encode({
+    type = "TURN_START",
+    player_id = current_user_id,
+    seat = current_seat,
+    deadline = state.turn_deadline
+  }))
+end
 
 --------------------------------------------------
 -- MATCH LOOP (CORE ENGINE TICK)
 --------------------------------------------------
 function M.match_loop(context, dispatcher, tick, state, messages)
-  -- STEP 3 will start here:
-  -- - Turn start
-  -- - Turn timer
-  -- - Auto-roll
+  if state.status ~= "RUNNING" then
+    return state
+  end
+
+  -- STEP 3A: Start turn if needed
+  if state.turn_phase == "TURN_START" then
+    start_turn(state, dispatcher)
+    return state
+  end
+
+  -- STEP 3B: Handle turn timeout
+  if state.turn_phase == "WAIT_DICE" then
+    if os.time() >= state.turn_deadline then
+      dispatcher.broadcast_message(1, nk.json_encode({
+        type = "TURN_TIMEOUT",
+        player_id = state.seats[state.current_turn]
+      }))
+
+      -- Step 4 will hook auto-roll here
+      state.turn_phase = "TURN_END"
+    end
+  end
+
   return state
 end
+
 
 --------------------------------------------------
 -- MATCH SIGNAL (OPTIONAL)
@@ -149,3 +189,4 @@ function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
 end
 
 return M
+
