@@ -47,6 +47,30 @@ if not match_mod then
     "main.lua: ludo_match not loaded or returned nil: " .. tostring(match_err)
   )
 end
+------------------------------------------------
+-- 3.5) Matchmaker → Match bridge (REQUIRED)
+------------------------------------------------
+
+nk.register_matchmaker_matched(function(context, matched_users)
+  -- All matched users share same mode
+  local mode = matched_users[1].properties.mode or "solo_1v1"
+
+  -- Create authoritative match
+  local match_id = nk.match_create("ludo_match", {
+    mode = mode
+  })
+
+  -- Join all matched users into the match
+  for _, user in ipairs(matched_users) do
+    nk.match_join(match_id, user.user_id, user.session_id)
+  end
+
+  nk.logger_info(
+    "Matchmaker created ludo_match " .. match_id ..
+    " for mode=" .. mode ..
+    " players=" .. tostring(#matched_users)
+  )
+end)
 
 ------------------------------------------------
 -- 4) Match-related RPCs
