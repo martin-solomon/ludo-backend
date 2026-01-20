@@ -22,6 +22,19 @@ local SEAT_COLORS = {
 }
 
 --------------------------------------------------
+-- STEP 7: SAFE TILES
+--------------------------------------------------
+
+local SAFE_TILES = {
+  [0] = true, [8] = true, [13] = true, [21] = true,
+  [26] = true, [34] = true, [39] = true, [47] = true
+}
+
+local function is_safe_tile(pos)
+  return SAFE_TILES[pos] == true
+end
+
+--------------------------------------------------
 -- STEP 5: VALID MOVE HELPERS
 --------------------------------------------------
 
@@ -56,7 +69,7 @@ local function get_valid_moves(state)
 end
 
 --------------------------------------------------
--- STEP 6: PAWN MOVEMENT
+-- STEP 6: PAWN MOVEMENT + STEP 7: KILL
 --------------------------------------------------
 
 local function compute_move_path(start_pos, dice)
@@ -73,6 +86,33 @@ local function compute_move_path(start_pos, dice)
   return path
 end
 
+local function find_opponent_pawns(state, seat, pos)
+  local victims = {}
+  for other_seat, pawns in pairs(state.pawns) do
+    if other_seat ~= seat then
+      for pawn_index, pawn_pos in pairs(pawns) do
+        if pawn_pos == pos then
+          table.insert(victims, {
+            seat = other_seat,
+            pawn = pawn_index
+          })
+        end
+      end
+    end
+  end
+  return victims
+end
+
+local function kill_pawn(state, dispatcher, victim)
+  state.pawns[victim.seat][victim.pawn] = -1
+
+  dispatcher.broadcast_message(1, nk.json_encode({
+    type = "PAWN_KILLED",
+    seat = victim.seat,
+    pawn = victim.pawn
+  }))
+end
+
 local function move_pawn(state, dispatcher, pawn_index)
   local seat = state.current_turn
   local start_pos = state.pawns[seat][pawn_index]
@@ -81,7 +121,6 @@ local function move_pawn(state, dispatcher, pawn_index)
   local path = compute_move_path(start_pos, dice)
   local final_pos = path[#path]
 
-  state.turn_phase = "MOVING"
   state.pawns[seat][pawn_index] = final_pos
 
   dispatcher.broadcast_message(1, nk.json_encode({
@@ -91,7 +130,17 @@ local function move_pawn(state, dispatcher, pawn_index)
     path = path
   }))
 
-  -- End turn (kill/safe logic comes next step)
+  --------------------------------------------------
+  -- STEP 7: SAFE TILE + KILL CHECK
+  --------------------------------------------------
+  if not is_safe_tile(final_pos) then
+    local victims = find_opponent_pawns(state, seat, final_pos)
+    if #victims > 0 then
+      kill_pawn(state, dispatcher, victims[1])
+      state.extra_turn = true
+    end
+  end
+
   state.turn_phase = "TURN_END"
 end
 
@@ -116,7 +165,6 @@ local function roll_dice(state, dispatcher, reason)
     reason = reason or "MANUAL"
   }))
 
-  -- 3 consecutive six rule
   if state.consecutive_six >= 3 then
     dispatcher.broadcast_message(1, nk.json_encode({
       type = "THREE_SIX_RULE",
@@ -127,7 +175,6 @@ local function roll_dice(state, dispatcher, reason)
     return
   end
 
-  -- STEP 5: VALID MOVE CALCULATION
   local valid_moves = get_valid_moves(state)
 
   if #valid_moves == 0 then
@@ -140,11 +187,6 @@ local function roll_dice(state, dispatcher, reason)
   end
 
   if #valid_moves == 1 then
-    dispatcher.broadcast_message(1, nk.json_encode({
-      type = "AUTO_SELECT_PAWN",
-      seat = state.current_turn,
-      pawn = valid_moves[1]
-    }))
     move_pawn(state, dispatcher, valid_moves[1])
     return
   end
@@ -176,6 +218,7 @@ function M.match_init(context, params)
     dice_value = nil,
     turn_deadline = 0,
 
+    extra_turn = false,
     status = "WAITING"
   }
   return state, 1, "ludo_match"
@@ -200,8 +243,6 @@ function M.match_join(context, dispatcher, tick, state, presences)
       state.players[p.user_id] = {
         user_id = p.user_id,
         username = p.username,
-        seat = nil,
-        color = nil,
         connected = true
       }
     end
@@ -214,8 +255,6 @@ function M.match_join(context, dispatcher, tick, state, presences)
   if state.status == "WAITING" and count == expected then
     local seat = 1
     for _, player in pairs(state.players) do
-      player.seat = seat
-      player.color = SEAT_COLORS[seat]
       state.seats[seat] = player.user_id
       state.pawns[seat] = { -1, -1, -1, -1 }
       seat = seat + 1
@@ -258,9 +297,17 @@ function M.match_loop(context, dispatcher, tick, state)
 
   if state.turn_phase == "TURN_START" then
     start_turn(state, dispatcher)
+
   elseif state.turn_phase == "WAIT_DICE" and os.time() >= state.turn_deadline then
     roll_dice(state, dispatcher, "AUTO")
+
   elseif state.turn_phase == "TURN_END" then
+    if state.extra_turn then
+      state.extra_turn = false
+      state.turn_phase = "TURN_START"
+      return state
+    end
+
     state.current_turn = state.current_turn % #state.seats + 1
     state.turn_phase = "TURN_START"
   end
