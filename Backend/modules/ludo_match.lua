@@ -22,7 +22,44 @@ local SEAT_COLORS = {
 }
 
 --------------------------------------------------
--- DICE HELPERS (STEP 4)
+-- STEP 5: VALID MOVE HELPERS
+--------------------------------------------------
+
+local FINAL_HOME_POS = 100
+
+local function can_leave_base(dice)
+  return dice == 6
+end
+
+local function can_pawn_move(pos, dice)
+  if pos == -1 then
+    return can_leave_base(dice)
+  end
+
+  if pos + dice > FINAL_HOME_POS then
+    return false
+  end
+
+  return true
+end
+
+local function get_valid_moves(state)
+  local seat = state.current_turn
+  local dice = state.dice_value
+  local pawns = state.pawns[seat]
+
+  local valid = {}
+  for pawn_index, pos in pairs(pawns) do
+    if can_pawn_move(pos, dice) then
+      table.insert(valid, pawn_index)
+    end
+  end
+
+  return valid
+end
+
+--------------------------------------------------
+-- STEP 4: DICE HELPERS
 --------------------------------------------------
 
 local function roll_dice(state, dispatcher, reason)
@@ -48,14 +85,40 @@ local function roll_dice(state, dispatcher, reason)
       type = "THREE_SIX_RULE",
       seat = state.current_turn
     }))
-
     state.consecutive_six = 0
     state.turn_phase = "TURN_END"
     return
   end
 
-  -- Next phase (movement will come in Step 5)
-  state.turn_phase = "DICE_ROLLED"
+  -- STEP 5: VALID MOVE CALCULATION
+  local valid_moves = get_valid_moves(state)
+
+  if #valid_moves == 0 then
+    dispatcher.broadcast_message(1, nk.json_encode({
+      type = "NO_VALID_MOVE",
+      seat = state.current_turn
+    }))
+    state.turn_phase = "TURN_END"
+    return
+  end
+
+  if #valid_moves == 1 then
+    dispatcher.broadcast_message(1, nk.json_encode({
+      type = "AUTO_SELECT_PAWN",
+      seat = state.current_turn,
+      pawn = valid_moves[1]
+    }))
+    state.selected_pawn = valid_moves[1]
+    state.turn_phase = "PAWN_SELECTED"
+    return
+  end
+
+  dispatcher.broadcast_message(1, nk.json_encode({
+    type = "SELECT_PAWN",
+    seat = state.current_turn,
+    pawns = valid_moves
+  }))
+  state.turn_phase = "WAIT_PAWN_SELECT"
 end
 
 --------------------------------------------------
@@ -66,8 +129,13 @@ function M.match_init(context, params)
     match_id = context.match_id,
     mode = params.mode or "solo_1v1",
 
-    players = {},     -- user_id -> player data
-    seats = {},       -- seat_index -> user_id
+    players = {},
+    seats = {},
+
+    -- STEP 5: Pawn state
+    -- pawns[seat][pawn] = position
+    -- position = -1 (BASE), 0+ board, 100 = HOME
+    pawns = {},
 
     current_turn = 1,
     turn_phase = "INIT",
@@ -129,6 +197,17 @@ function M.match_join(context, dispatcher, tick, state, presences)
       seat = seat + 1
     end
 
+    -- STEP 5: Initialize pawns
+    state.pawns = {}
+    for seat_index, _ in pairs(state.seats) do
+      state.pawns[seat_index] = {
+        [1] = -1,
+        [2] = -1,
+        [3] = -1,
+        [4] = -1
+      }
+    end
+
     state.current_turn = 1
     state.turn_phase = "TURN_START"
     state.status = "RUNNING"
@@ -157,7 +236,7 @@ function M.match_leave(context, dispatcher, tick, state, presences)
 end
 
 --------------------------------------------------
--- TURN TIMER HELPERS (STEP 3)
+-- TURN TIMER HELPERS
 --------------------------------------------------
 local TURN_TIME_SECONDS = 12
 
@@ -195,8 +274,6 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         type = "TURN_TIMEOUT",
         player_id = state.seats[state.current_turn]
       }))
-
-      -- Auto-roll on timeout
       roll_dice(state, dispatcher, "AUTO")
     end
   end
