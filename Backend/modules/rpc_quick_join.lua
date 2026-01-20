@@ -1,40 +1,40 @@
 local nk = require("nakama")
 
-local function get_expected_players(mode)
-  if mode == "solo_1v1" then return 2 end
-  if mode == "duo_3p" then return 3 end
-  if mode == "solo_4p" then return 4 end
-  if mode == "team_2v2" then return 4 end
-  return 2
-end
-
 local function rpc_quick_join(context, payload)
   if not context.user_id then
-    return nk.json_encode({ error = "NO_SESSION" }), 401
+    return nk.json_encode({ error = "unauthorized" }), 401
   end
 
-  local data = nk.json_decode(payload or "{}")
+  local data = {}
+  if payload then
+    data = nk.json_decode(payload)
+  end
+
   local mode = data.mode or "solo_1v1"
 
-  local expected = get_expected_players(mode)
-
-  -- Matchmaker query (CRITICAL)
-  local query = "+properties.mode:" .. mode
+  -- Expected players per mode
+  local max_count = ({
+    solo_1v1 = 2,
+    duo_3p   = 3,
+    solo_4p  = 4,
+    team_2v2 = 4
+  })[mode] or 2
 
   nk.matchmaker_add(
     context.user_id,
     context.session_id,
-    query,
-    { mode = mode },      -- properties
-    expected,             -- min players
-    expected              -- max players
+    {
+      mode = mode
+    },
+    max_count,
+    max_count,
+    1
   )
 
   return nk.json_encode({
-    status = "SEARCHING",
-    mode = mode,
-    players_required = expected
+    status = "searching",
+    mode = mode
   })
 end
 
-nk.register_rpc(rpc_quick_join, "quick_join")
+nk.register_rpc(rpc_quick_join, "rpc_quick_join")
