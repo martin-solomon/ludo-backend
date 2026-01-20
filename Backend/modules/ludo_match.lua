@@ -21,6 +21,42 @@ local SEAT_COLORS = {
   [4] = "YELLOW"
 }
 
+--------------------------------------------------
+-- DICE HELPERS (STEP 4)
+--------------------------------------------------
+
+local function roll_dice(state, dispatcher, reason)
+  local dice = math.random(1, 6)
+  state.dice_value = dice
+
+  if dice == 6 then
+    state.consecutive_six = state.consecutive_six + 1
+  else
+    state.consecutive_six = 0
+  end
+
+  dispatcher.broadcast_message(1, nk.json_encode({
+    type = "DICE_ROLLED",
+    value = dice,
+    seat = state.current_turn,
+    reason = reason or "MANUAL"
+  }))
+
+  -- 3 consecutive six rule
+  if state.consecutive_six >= 3 then
+    dispatcher.broadcast_message(1, nk.json_encode({
+      type = "THREE_SIX_RULE",
+      seat = state.current_turn
+    }))
+
+    state.consecutive_six = 0
+    state.turn_phase = "TURN_END"
+    return
+  end
+
+  -- Next phase (movement will come in Step 5)
+  state.turn_phase = "DICE_ROLLED"
+end
 
 --------------------------------------------------
 -- MATCH INIT
@@ -43,7 +79,6 @@ function M.match_init(context, params)
     status = "WAITING"
   }
 
-  -- tick_rate = 1 (1 loop per second)
   return state, 1, "ludo_match"
 end
 
@@ -61,7 +96,6 @@ end
 -- MATCH JOIN
 --------------------------------------------------
 function M.match_join(context, dispatcher, tick, state, presences)
-  -- Add players safely
   for _, p in ipairs(presences) do
     if not state.players[p.user_id] then
       state.players[p.user_id] = {
@@ -79,7 +113,6 @@ function M.match_join(context, dispatcher, tick, state, presences)
     end
   end
 
-  -- Count players
   local player_count = 0
   for _ in pairs(state.players) do
     player_count = player_count + 1
@@ -87,13 +120,12 @@ function M.match_join(context, dispatcher, tick, state, presences)
 
   local expected_players = get_expected_players(state.mode)
 
-  -- Start match if ready
   if state.status == "WAITING" and player_count == expected_players then
     local seat = 1
-    for user_id, player in pairs(state.players) do
+    for _, player in pairs(state.players) do
       player.seat = seat
       player.color = SEAT_COLORS[seat]
-      state.seats[seat] = user_id
+      state.seats[seat] = player.user_id
       seat = seat + 1
     end
 
@@ -123,9 +155,10 @@ function M.match_leave(context, dispatcher, tick, state, presences)
   end
   return state
 end
---------------------------
--- match loop helper
---------------------------
+
+--------------------------------------------------
+-- TURN TIMER HELPERS (STEP 3)
+--------------------------------------------------
 local TURN_TIME_SECONDS = 12
 
 local function start_turn(state, dispatcher)
@@ -144,20 +177,18 @@ local function start_turn(state, dispatcher)
 end
 
 --------------------------------------------------
--- MATCH LOOP (CORE ENGINE TICK)
+-- MATCH LOOP
 --------------------------------------------------
 function M.match_loop(context, dispatcher, tick, state, messages)
   if state.status ~= "RUNNING" then
     return state
   end
 
-  -- STEP 3A: Start turn
   if state.turn_phase == "TURN_START" then
     start_turn(state, dispatcher)
     return state
   end
 
-  -- STEP 3B: Waiting for dice roll
   if state.turn_phase == "WAIT_DICE" then
     if os.time() >= state.turn_deadline then
       dispatcher.broadcast_message(1, nk.json_encode({
@@ -165,33 +196,47 @@ function M.match_loop(context, dispatcher, tick, state, messages)
         player_id = state.seats[state.current_turn]
       }))
 
-      -- For now: directly move to next turn
-      state.turn_phase = "TURN_END"
+      -- Auto-roll on timeout
+      roll_dice(state, dispatcher, "AUTO")
     end
   end
 
-  -- STEP 3C: End turn (temporary logic)
   if state.turn_phase == "TURN_END" then
-    -- move to next player safely
     state.current_turn = state.current_turn + 1
     if state.current_turn > #state.seats then
       state.current_turn = 1
     end
 
-    state.consecutive_six = 0
     state.dice_value = nil
+    state.consecutive_six = 0
     state.turn_phase = "TURN_START"
   end
 
   return state
 end
 
-
 --------------------------------------------------
--- MATCH SIGNAL (OPTIONAL)
+-- MATCH SIGNAL (CLIENT INPUT)
 --------------------------------------------------
 function M.match_signal(context, dispatcher, tick, state, data)
-  return state, data
+  local msg = nk.json_decode(data)
+
+  if msg.type == "ROLL_DICE" then
+    local user_id = context.user_id
+    local current_user = state.seats[state.current_turn]
+
+    if user_id ~= current_user then
+      return state
+    end
+
+    if state.turn_phase ~= "WAIT_DICE" then
+      return state
+    end
+
+    roll_dice(state, dispatcher, "MANUAL")
+  end
+
+  return state
 end
 
 --------------------------------------------------
@@ -202,5 +247,3 @@ function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
 end
 
 return M
-
-
