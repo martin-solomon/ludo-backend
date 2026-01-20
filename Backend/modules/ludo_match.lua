@@ -35,11 +35,9 @@ local function can_pawn_move(pos, dice)
   if pos == -1 then
     return can_leave_base(dice)
   end
-
   if pos + dice > FINAL_HOME_POS then
     return false
   end
-
   return true
 end
 
@@ -54,17 +52,16 @@ local function get_valid_moves(state)
       table.insert(valid, pawn_index)
     end
   end
-
   return valid
 end
+
 --------------------------------------------------
--- STEP 6: PAWN MOVEMENT HELPERS
+-- STEP 6: PAWN MOVEMENT
 --------------------------------------------------
 
 local function compute_move_path(start_pos, dice)
   local path = {}
 
-  -- Pawn leaving base
   if start_pos == -1 then
     table.insert(path, 0)
     return path
@@ -73,7 +70,6 @@ local function compute_move_path(start_pos, dice)
   for i = 1, dice do
     table.insert(path, start_pos + i)
   end
-
   return path
 end
 
@@ -85,9 +81,8 @@ local function move_pawn(state, dispatcher, pawn_index)
   local path = compute_move_path(start_pos, dice)
   local final_pos = path[#path]
 
-  -- Update state
-  state.pawns[seat][pawn_index] = final_pos
   state.turn_phase = "MOVING"
+  state.pawns[seat][pawn_index] = final_pos
 
   dispatcher.broadcast_message(1, nk.json_encode({
     type = "PAWN_MOVING",
@@ -96,12 +91,12 @@ local function move_pawn(state, dispatcher, pawn_index)
     path = path
   }))
 
-  -- Movement ends immediately on server side
+  -- End turn (kill/safe logic comes next step)
   state.turn_phase = "TURN_END"
 end
 
 --------------------------------------------------
--- STEP 4: DICE HELPERS
+-- STEP 4: DICE
 --------------------------------------------------
 
 local function roll_dice(state, dispatcher, reason)
@@ -150,8 +145,7 @@ local function roll_dice(state, dispatcher, reason)
       seat = state.current_turn,
       pawn = valid_moves[1]
     }))
-    state.selected_pawn = valid_moves[1]
-    state.turn_phase = "PAWN_SELECTED"
+    move_pawn(state, dispatcher, valid_moves[1])
     return
   end
 
@@ -173,10 +167,6 @@ function M.match_init(context, params)
 
     players = {},
     seats = {},
-
-    -- STEP 5: Pawn state
-    -- pawns[seat][pawn] = position
-    -- position = -1 (BASE), 0+ board, 100 = HOME
     pawns = {},
 
     current_turn = 1,
@@ -188,14 +178,13 @@ function M.match_init(context, params)
 
     status = "WAITING"
   }
-
   return state, 1, "ludo_match"
 end
 
 --------------------------------------------------
 -- MATCH JOIN ATTEMPT
 --------------------------------------------------
-function M.match_join_attempt(context, dispatcher, tick, state, presence, metadata)
+function M.match_join_attempt(context, dispatcher, tick, state)
   if state.status ~= "WAITING" then
     return false, "MATCH_ALREADY_STARTED"
   end
@@ -211,88 +200,52 @@ function M.match_join(context, dispatcher, tick, state, presences)
       state.players[p.user_id] = {
         user_id = p.user_id,
         username = p.username,
-        session_id = p.session_id,
         seat = nil,
         color = nil,
-        skin_id = p.metadata and p.metadata.skin_id or "default",
-        connected = true,
-        finished = false
+        connected = true
       }
-    else
-      state.players[p.user_id].connected = true
     end
   end
 
-  local player_count = 0
-  for _ in pairs(state.players) do
-    player_count = player_count + 1
-  end
+  local count = 0
+  for _ in pairs(state.players) do count = count + 1 end
+  local expected = get_expected_players(state.mode)
 
-  local expected_players = get_expected_players(state.mode)
-
-  if state.status == "WAITING" and player_count == expected_players then
+  if state.status == "WAITING" and count == expected then
     local seat = 1
     for _, player in pairs(state.players) do
       player.seat = seat
       player.color = SEAT_COLORS[seat]
       state.seats[seat] = player.user_id
+      state.pawns[seat] = { -1, -1, -1, -1 }
       seat = seat + 1
     end
 
-    -- STEP 5: Initialize pawns
-    state.pawns = {}
-    for seat_index, _ in pairs(state.seats) do
-      state.pawns[seat_index] = {
-        [1] = -1,
-        [2] = -1,
-        [3] = -1,
-        [4] = -1
-      }
-    end
-
-    state.current_turn = 1
-    state.turn_phase = "TURN_START"
     state.status = "RUNNING"
-    state.consecutive_six = 0
-    state.dice_value = nil
+    state.turn_phase = "TURN_START"
 
     dispatcher.broadcast_message(1, nk.json_encode({
       type = "GAME_START",
       state = state
     }))
   end
-
   return state
 end
 
 --------------------------------------------------
--- MATCH LEAVE
---------------------------------------------------
-function M.match_leave(context, dispatcher, tick, state, presences)
-  for _, p in ipairs(presences) do
-    if state.players[p.user_id] then
-      state.players[p.user_id].connected = false
-    end
-  end
-  return state
-end
-
---------------------------------------------------
--- TURN TIMER HELPERS
+-- TURN TIMER
 --------------------------------------------------
 local TURN_TIME_SECONDS = 12
 
 local function start_turn(state, dispatcher)
-  local current_seat = state.current_turn
-  local current_user_id = state.seats[current_seat]
-
+  local seat = state.current_turn
   state.turn_phase = "WAIT_DICE"
   state.turn_deadline = os.time() + TURN_TIME_SECONDS
 
   dispatcher.broadcast_message(1, nk.json_encode({
     type = "TURN_START",
-    player_id = current_user_id,
-    seat = current_seat,
+    seat = seat,
+    player_id = state.seats[seat],
     deadline = state.turn_deadline
   }))
 end
@@ -300,34 +253,15 @@ end
 --------------------------------------------------
 -- MATCH LOOP
 --------------------------------------------------
-function M.match_loop(context, dispatcher, tick, state, messages)
-  if state.status ~= "RUNNING" then
-    return state
-  end
+function M.match_loop(context, dispatcher, tick, state)
+  if state.status ~= "RUNNING" then return state end
 
   if state.turn_phase == "TURN_START" then
     start_turn(state, dispatcher)
-    return state
-  end
-
-  if state.turn_phase == "WAIT_DICE" then
-    if os.time() >= state.turn_deadline then
-      dispatcher.broadcast_message(1, nk.json_encode({
-        type = "TURN_TIMEOUT",
-        player_id = state.seats[state.current_turn]
-      }))
-      roll_dice(state, dispatcher, "AUTO")
-    end
-  end
-
-  if state.turn_phase == "TURN_END" then
-    state.current_turn = state.current_turn + 1
-    if state.current_turn > #state.seats then
-      state.current_turn = 1
-    end
-
-    state.dice_value = nil
-    state.consecutive_six = 0
+  elseif state.turn_phase == "WAIT_DICE" and os.time() >= state.turn_deadline then
+    roll_dice(state, dispatcher, "AUTO")
+  elseif state.turn_phase == "TURN_END" then
+    state.current_turn = state.current_turn % #state.seats + 1
     state.turn_phase = "TURN_START"
   end
 
@@ -335,44 +269,27 @@ function M.match_loop(context, dispatcher, tick, state, messages)
 end
 
 --------------------------------------------------
--- MATCH SIGNAL (CLIENT INPUT)
+-- CLIENT INPUT
 --------------------------------------------------
 function M.match_signal(context, dispatcher, tick, state, data)
   local msg = nk.json_decode(data)
-  local user_id = context.user_id
-  local current_user = state.seats[state.current_turn]
+  local user = context.user_id
+  local current = state.seats[state.current_turn]
 
-  -- Manual dice roll
-  if msg.type == "ROLL_DICE" then
-    if user_id ~= current_user then return state end
-    if state.turn_phase ~= "WAIT_DICE" then return state end
+  if msg.type == "ROLL_DICE" and user == current and state.turn_phase == "WAIT_DICE" then
     roll_dice(state, dispatcher, "MANUAL")
-    return state
-  end
-
-  -- Pawn selection
-  if msg.type == "SELECT_PAWN" then
-    if user_id ~= current_user then return state end
-    if state.turn_phase ~= "WAIT_PAWN_SELECT" then return state end
-
-    local pawn_index = msg.pawn
-    state.selected_pawn = pawn_index
-    state.turn_phase = "PAWN_SELECTED"
-
-    move_pawn(state, dispatcher, pawn_index)
-    return state
+  elseif msg.type == "SELECT_PAWN" and user == current and state.turn_phase == "WAIT_PAWN_SELECT" then
+    move_pawn(state, dispatcher, msg.pawn)
   end
 
   return state
 end
-
 
 --------------------------------------------------
 -- MATCH TERMINATE
 --------------------------------------------------
-function M.match_terminate(context, dispatcher, tick, state, grace_seconds)
+function M.match_terminate(context, dispatcher, tick, state)
   return state
 end
 
 return M
-
