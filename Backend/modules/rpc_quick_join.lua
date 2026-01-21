@@ -1,9 +1,7 @@
 local nk = require("nakama")
 
 local function rpc_quick_join(context, payload)
-  -- LOGGING START
-  nk.logger_info("RPC Quick Join: Started by user " .. (context.user_id or "unknown"))
-
+  -- 1. Security & Payload Check
   if not context.user_id then
     return nk.json_encode({ error = "unauthorized" }), 401
   end
@@ -14,8 +12,9 @@ local function rpc_quick_join(context, payload)
   end
 
   local mode = data.mode or "solo_1v1"
-  nk.logger_info("RPC Quick Join: Mode selected is " .. mode)
+  nk.logger_info("RPC Quick Join: Mode is " .. mode)
 
+  -- 2. Define Counts
   local max_count = ({
     solo_1v1 = 2,
     duo_3p   = 3,
@@ -24,29 +23,27 @@ local function rpc_quick_join(context, payload)
   })[mode] or 2
 
   local query = "+properties.mode:" .. mode
+
+  -- 3. Define Properties
+  local count_multiple = 1
   
-  -- DEFINE PROPERTIES EXPLICITLY
-  local count_multiple = 1        -- Arg 6: Must be Number
-  local numeric_props = {}        -- Arg 7: Must be Table (Empty is fine)
-  local string_props = {          -- Arg 8: Must be Table (Your Data)
-    mode = mode
-  }
+  -- THIS IS THE FIX:
+  -- We prepare the String Table (for text) and Numeric Table (for numbers)
+  local string_props = { mode = mode }
+  local numeric_props = {} 
 
-  nk.logger_info("RPC Quick Join: Adding to matchmaker with query: " .. query)
-
-  -- THE FIX: PASS ALL 8 ARGUMENTS EXPLICITLY
+  -- 4. Add to Matchmaker
+  -- NOTICE THE ORDER: string_props (7), THEN numeric_props (8)
   nk.matchmaker_add(
-    context.user_id,      -- 1. User
-    context.session_id,   -- 2. Session
-    query,                -- 3. Query String
-    max_count,            -- 4. Min Players
-    max_count,            -- 5. Max Players
-    count_multiple,       -- 6. Count Multiple (NUMBER) -> CRITICAL FIX
-    numeric_props,        -- 7. Numeric Props (TABLE)
-    string_props          -- 8. String Props (TABLE) -> YOUR DATA GOES HERE
+    context.user_id,      -- 1
+    context.session_id,   -- 2
+    query,                -- 3
+    max_count,            -- 4
+    max_count,            -- 5
+    count_multiple,       -- 6
+    string_props,         -- 7 (Text goes here!)
+    numeric_props         -- 8 (Numbers go here!)
   )
-
-  nk.logger_info("RPC Quick Join: Success!")
 
   return nk.json_encode({
     status = "searching",
