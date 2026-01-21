@@ -2,34 +2,29 @@ local nk = require("nakama")
 
 local function cancel(context, payload)
   -- 1. Security Check
-  if not context.user_id or not context.session_id then
+  if not context.session_id then
     return nk.json_encode({ success = false, error = "no_session" })
   end
 
-  -- 2. Remove from Matchmaker (Wrapped in pcall for safety)
-  -- This prevents the server from complaining if the user wasn't in the queue
-  local ok, err = pcall(
-    nk.matchmaker_remove,
-    context.user_id,
-    context.session_id
-  )
+  -- 2. Remove from Matchmaker (Correct API)
+  -- We use 'matchmaker_remove_session' which doesn't need a ticket
+  local ok, err = pcall(nk.matchmaker_remove_session, context.session_id)
 
   if not ok then
-    -- Log it as a warning, but don't stop the function!
-    nk.logger_warn("Matchmaker remove warning (user might not be in queue): " .. tostring(err))
+    nk.logger_warn("Matchmaker remove failed: " .. tostring(err))
   end
 
-  -- 3. Clean up Storage
-  -- Always do this, even if matchmaker_remove failed
-  nk.storage_delete({
-    {
-      collection = "matchmaking",
-      key = "active_match",
-      user_id = context.user_id
-    }
-  })
-
-  nk.logger_info("Matchmaker Cancelled for user: " .. context.user_id)
+  -- 3. Clean up Storage (Active Match)
+  if context.user_id then
+    nk.storage_delete({
+      {
+        collection = "matchmaking",
+        key = "active_match",
+        user_id = context.user_id
+      }
+    })
+    nk.logger_info("Matchmaker Cancelled for user: " .. context.user_id)
+  end
 
   return nk.json_encode({
     success = true,
