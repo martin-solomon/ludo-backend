@@ -3,6 +3,8 @@
 -- doesn't stop the whole runtime from starting.
 
 local nk = require("nakama")
+-- ✅ Seed RNG ONCE for entire server
+math.randomseed(os.time())
 
 -- 0) Optional helpers (non-fatal)
 pcall(function() require("main_helpers") end)
