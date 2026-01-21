@@ -1,6 +1,5 @@
 local nk = require("nakama")
 
--- ✅ Standalone function (NOT inside table)
 local function rpc_quick_join(context, payload)
   if not context.user_id then
     return nk.json_encode({ error = "unauthorized" }), 401
@@ -8,10 +7,7 @@ local function rpc_quick_join(context, payload)
 
   local data = {}
   if payload and payload ~= "" then
-    local ok, decoded = pcall(nk.json_decode, payload)
-    if ok and type(decoded) == "table" then
-      data = decoded
-    end
+    data = nk.json_decode(payload)
   end
 
   local mode = data.mode or "solo_1v1"
@@ -38,5 +34,4 @@ local function rpc_quick_join(context, payload)
   })
 end
 
--- ✅ Register the FUNCTION itself
 nk.register_rpc(rpc_quick_join, "rpc_quick_join")
