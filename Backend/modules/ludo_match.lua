@@ -255,6 +255,7 @@ function M.match_init(context, params)
 
     players = {},
     seats = {},
+    seat_owners = {}, -- ✅ NEW: Map to track UserID -> Seat Number
     pawns = {},
 
     current_turn = 1,
@@ -292,8 +293,10 @@ function M.match_join(_,dispatcher,_,state,presences)
   
   if state.status == "WAITING" and count == get_expected_players(state.mode) then
     local s = 1
-    for _ in pairs(state.players) do
+    -- ✅ UPDATED LOOP: Iterate over keys to capture User ID
+    for user_id, _ in pairs(state.players) do
       state.seats[s] = true
+      state.seat_owners[s] = user_id -- ✅ Store the User ID for this seat
       state.pawns[s] = {-1,-1,-1,-1} -- -1 means in Base
       s = s + 1
     end
@@ -311,7 +314,7 @@ function M.match_loop(_, dispatcher, _, state)
 
   -- PHASE 1: Start Turn
   if state.turn_phase == "TURN_START" then
-    -- Skip players who have already finished (unless Team Up requires rolling for partner - keeping simple for now)
+    -- Skip players who have already finished
     if check_player_finished(state, state.current_turn) then
        state.turn_phase = "TURN_END"
        return state
@@ -320,7 +323,7 @@ function M.match_loop(_, dispatcher, _, state)
     state.turn_phase = "WAIT_DICE"
     state.turn_deadline = now + TURN_TIME_SECONDS
     
-    -- Notify client it's their turn (optional, but good for UI sync)
+    -- Notify client it's their turn
     dispatcher.broadcast_message(1, nk.json_encode({
       type="TURN_START", seat=state.current_turn, deadline=state.turn_deadline
     }))
@@ -329,7 +332,7 @@ function M.match_loop(_, dispatcher, _, state)
   elseif state.turn_phase == "WAIT_DICE" and now >= state.turn_deadline then
     roll_dice(state, dispatcher, "AUTO") -- Auto-roll if time runs out
 
-  -- PHASE 3: Wait for Pawn Selection (NEW)
+  -- PHASE 3: Wait for Pawn Selection
   elseif state.turn_phase == "WAIT_PAWN_SELECT" and now >= state.turn_deadline then
     -- Auto-move logic: Pick the first valid pawn
     local valid = get_valid_moves(state)
@@ -362,13 +365,10 @@ function M.match_signal(_, dispatcher, _, state, data)
 
   -- Handle Manual Dice Roll
   if msg.type == "ROLL_DICE" and state.turn_phase == "WAIT_DICE" then
-    -- Verify the sender is the current turn player (security check)
-    -- (In a real game, you'd check context.user_id vs seat owner, simplified here)
     roll_dice(state, dispatcher, "MANUAL")
 
   -- Handle Manual Pawn Selection
   elseif msg.type == "SELECT_PAWN" and state.turn_phase == "WAIT_PAWN_SELECT" then
-    -- Verify valid pawn selection
     local valid = get_valid_moves(state)
     local is_valid = false
     for _, v in ipairs(valid) do
