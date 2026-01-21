@@ -3,7 +3,8 @@
 -- doesn't stop the whole runtime from starting.
 
 local nk = require("nakama")
--- ✅ Seed RNG ONCE for entire server
+
+-- ✅ Seed RNG ONCE for entire server (dice randomness)
 math.randomseed(os.time())
 
 -- 0) Optional helpers (non-fatal)
@@ -54,7 +55,7 @@ end
 -- 3.5) Matchmaker → Match bridge (REQUIRED)
 ------------------------------------------------
 
--- ✅ MUST be a named function (NOT anonymous)
+-- ✅ Named function (authoritative match creation)
 local function on_matchmaker_matched(context, matched_users)
   if not matched_users or #matched_users == 0 then
     return
@@ -71,7 +72,9 @@ local function on_matchmaker_matched(context, matched_users)
   for _, user in ipairs(matched_users) do
     nk.match_join(match_id, user.user_id, user.session_id)
   end
-    for _, user in ipairs(matched_users) do
+
+  -- ✅ Store match id for frontend polling (secure permissions)
+  for _, user in ipairs(matched_users) do
     nk.storage_write({
       {
         collection = "matchmaking",
@@ -79,7 +82,9 @@ local function on_matchmaker_matched(context, matched_users)
         user_id = user.user_id,
         value = {
           matchId = match_id
-        }
+        },
+        permission_read = 1,   -- owner read
+        permission_write = 0   -- server only
       }
     })
   end
@@ -91,8 +96,11 @@ local function on_matchmaker_matched(context, matched_users)
   )
 end
 
--- ✅ Register ONLY the function reference
-nk.register_matchmaker_matched(on_matchmaker_matched)
+-- ✅ SAFETY: prevent duplicate registration (hot reload / restart safe)
+if not _G.__MATCHMAKER_REGISTERED then
+  nk.register_matchmaker_matched(on_matchmaker_matched)
+  _G.__MATCHMAKER_REGISTERED = true
+end
 
 ------------------------------------------------
 -- 4) Match-related RPCs
