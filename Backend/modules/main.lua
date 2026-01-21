@@ -69,6 +69,18 @@ local function on_matchmaker_matched(context, matched_users)
   for _, user in ipairs(matched_users) do
     nk.match_join(match_id, user.user_id, user.session_id)
   end
+    for _, user in ipairs(matched_users) do
+    nk.storage_write({
+      {
+        collection = "matchmaking",
+        key = "active_match",
+        user_id = user.user_id,
+        value = {
+          matchId = match_id
+        }
+      }
+    })
+  end
 
   nk.logger_info(
     "Matchmaker created ludo_match " .. match_id ..
