@@ -18,34 +18,40 @@ local function player_list(context, payload)
     return nk.json_encode({ error = "match_not_found" })
   end
 
-  -- 3. Get User IDs from Presences
-  -- We need to collect all User IDs to fetch their full account info
+  -- 3. Identify Who is Sitting Where
+  -- We read the 'seat_owners' table we just added to ludo_match.lua
+  local user_seat_map = {}
+  if match.state and match.state.seat_owners then
+    -- Reverse the map: Seat->User becomes User->Seat
+    for seat, uid in pairs(match.state.seat_owners) do
+      user_seat_map[uid] = seat
+    end
+  end
+
+  -- 4. Collect User IDs
   local user_ids = {}
   local presences = match.presences or {}
   
-  -- Also check internal state if available (for authoritative logic)
-  if match.state and match.state.player_seats then
-    for _, p in pairs(match.state.player_seats) do
-      table.insert(user_ids, p.user_id)
+  -- Use seat owners if available (most reliable), otherwise presences
+  if match.state and match.state.seat_owners then
+    for _, uid in pairs(match.state.seat_owners) do
+      table.insert(user_ids, uid)
     end
   else
-    -- Fallback to standard presences
     for _, p in ipairs(presences) do
       table.insert(user_ids, p.user_id)
     end
   end
 
-  -- If no players, return empty
   if #user_ids == 0 then
     return nk.json_encode({ players = {} })
   end
 
-  -- 4. Fetch Full User Accounts (to get Avatar, Name, Level)
+  -- 5. Fetch Full User Accounts
   local users = nk.users_get_id(user_ids)
   local enriched_list = {}
 
   for _, user in ipairs(users) do
-    -- Decode the metadata (where avatar/level are usually stored)
     local metadata = {}
     if user.metadata and user.metadata ~= "" then
       local status, res = pcall(nk.json_decode, user.metadata)
@@ -55,10 +61,13 @@ local function player_list(context, payload)
     table.insert(enriched_list, {
       userId = user.id,
       username = user.username,
-      displayName = user.display_name or user.username, -- Fallback to username
-      avatarId = metadata.avatarId or "1",              -- Default to "1" if missing
-      level = metadata.level or 1,                      -- Default to 1 if missing
-      seat = 0 -- You can calculate seat logic here if needed
+      displayName = user.display_name or user.username,
+      avatarId = metadata.avatarId or "1",
+      level = metadata.level or 1,
+      
+      -- ✅ NEW: Send the correct seat number!
+      -- Frontend uses this to rotate the board (If I am 3, rotate board so 3 is bottom)
+      seat = user_seat_map[user.id] or 0 
     })
   end
 
