@@ -1,11 +1,12 @@
 local nk = require("nakama")
 
 local function rpc_quick_join(context, payload)
-  -- 1. Security & Payload Check
+  -- 1. Security Check
   if not context.user_id then
     return nk.json_encode({ error = "unauthorized" }), 401
   end
 
+  -- 2. Decode Payload
   local data = {}
   if payload and payload ~= "" then
     data = nk.json_decode(payload)
@@ -14,7 +15,7 @@ local function rpc_quick_join(context, payload)
   local mode = data.mode or "solo_1v1"
   nk.logger_info("RPC Quick Join: Mode is " .. mode)
 
-  -- 2. Define Counts
+  -- 3. Define Counts
   local max_count = ({
     solo_1v1 = 2,
     duo_3p   = 3,
@@ -24,25 +25,20 @@ local function rpc_quick_join(context, payload)
 
   local query = "+properties.mode:" .. mode
 
-  -- 3. Define Properties
-  local count_multiple = 1
-  
-  -- THIS IS THE FIX:
-  -- We prepare the String Table (for text) and Numeric Table (for numbers)
+  -- 4. Define Properties
+  -- Note: We REMOVED 'count_multiple'. It is not needed here.
   local string_props = { mode = mode }
   local numeric_props = {} 
 
-  -- 4. Add to Matchmaker
-  -- NOTICE THE ORDER: string_props (7), THEN numeric_props (8)
+  -- 5. Add to Matchmaker (The "7-Slot" Version)
   nk.matchmaker_add(
-    context.user_id,      -- 1
-    context.session_id,   -- 2
-    query,                -- 3
-    max_count,            -- 4
-    max_count,            -- 5
-    count_multiple,       -- 6
-    string_props,         -- 7 (Text goes here!)
-    numeric_props         -- 8 (Numbers go here!)
+    context.user_id,      -- 1. User
+    context.session_id,   -- 2. Session
+    query,                -- 3. Query
+    max_count,            -- 4. Min
+    max_count,            -- 5. Max
+    string_props,         -- 6. String Props (Table) -> CORRECT SLOT
+    numeric_props         -- 7. Numeric Props (Table) -> CORRECT SLOT
   )
 
   return nk.json_encode({
