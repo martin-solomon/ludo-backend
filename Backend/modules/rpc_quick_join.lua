@@ -6,7 +6,7 @@ local function rpc_quick_join(context, payload)
     return nk.json_encode({ error = "unauthorized" }), 401
   end
 
-  -- 2. Parse Payload
+  -- 2. Decode Payload
   local data = {}
   if payload and payload ~= "" then
     data = nk.json_decode(payload)
@@ -14,7 +14,7 @@ local function rpc_quick_join(context, payload)
 
   local mode = data.mode or "solo_1v1"
 
-  -- 3. Define Player Counts
+  -- 3. Get Player Counts
   local max_count = ({
     solo_1v1 = 2,
     duo_3p   = 3,
@@ -22,20 +22,20 @@ local function rpc_quick_join(context, payload)
     team_2v2 = 4
   })[mode] or 2
 
-  -- 4. Create the Search Query
-  -- This tells Nakama: "Only match me with people who have property 'mode' equal to my mode"
+  -- 4. Create the Search Query (This MUST be a String)
+  -- We search for matches that have the same 'mode' property
   local query = "+properties.mode:" .. mode
 
-  -- 5. Add to Matchmaker (Corrected Arguments)
+  -- 5. Add to Matchmaker
   nk.matchmaker_add(
-    context.user_id,        -- 1. User ID
-    context.session_id,     -- 2. Session ID
-    query,                  -- 3. Query (MUST BE STRING)
-    max_count,              -- 4. Min Count
-    max_count,              -- 5. Max Count
-    1,                      -- 6. Count Multiple (default 1)
-    {},                     -- 7. Numeric Properties (empty)
-    { mode = mode }         -- 8. String Properties (THIS is where your table goes)
+    context.user_id,        -- 1. Who (User ID)
+    context.session_id,     -- 2. Session
+    query,                  -- 3. Query (FIXED: Now it is a String!)
+    max_count,              -- 4. Min Players
+    max_count,              -- 5. Max Players
+    1,                      -- 6. Count Multiple
+    nil,                    -- 7. Numeric Properties (None)
+    { mode = mode }         -- 8. String Properties (FIXED: Table goes here!)
   )
 
   return nk.json_encode({
