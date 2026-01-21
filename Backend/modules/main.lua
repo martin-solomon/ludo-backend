@@ -108,7 +108,7 @@ end
 local rpc_late = {
   "rpc_quick_join",
   "rpc_player_list",
-  "rpc_match_start"
+  "rpc_match_start",
   "rpc_matchmaker_cancel"
 }
 
