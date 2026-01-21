@@ -1,7 +1,15 @@
 local nk = require("nakama")
 
 local function rpc_quick_join(context, payload)
-  -- 1. Security Check
+  -- 1. CRITICAL: Check for Session ID
+  -- If this is missing, the Matchmaker CRASHES with "attempt to call a nil value"
+  if not context.session_id then
+    return (nk.json_encode({ 
+      error = "Missing Session ID", 
+      message = "You must authenticate as a User (not Server) to use Matchmaking."
+    }))
+  end
+
   if not context.user_id then
     return (nk.json_encode({ error = "unauthorized" }))
   end
@@ -24,25 +32,25 @@ local function rpc_quick_join(context, payload)
 
   -- 4. Define Properties
   local string_props = { mode = mode }
-  local numeric_props = {} 
+  -- PASS NIL INSTEAD OF EMPTY TABLE if no numeric props
+  local numeric_props = nil 
 
   -- 5. Add to Matchmaker (7-Argument Version)
-  -- We REMOVED the number '1' (count_multiple). It does not exist in your Nakama version.
+  -- Signature: (User, Session, Query, Min, Max, StringProps, NumericProps)
   local success, err = pcall(
     nk.matchmaker_add,
     context.user_id,      -- 1. User
-    context.session_id,   -- 2. Session
+    context.session_id,   -- 2. Session (MUST NOT BE NIL)
     query,                -- 3. Query
     max_count,            -- 4. Min
     max_count,            -- 5. Max
-    string_props,         -- 6. String Props (Table) -> CORRECT SLOT
-    numeric_props         -- 7. Numeric Props (Table) -> CORRECT SLOT
+    string_props,         -- 6. String Props (Table)
+    numeric_props         -- 7. Numeric Props (Table/Nil)
   )
 
   if not success then
-    nk.logger_error("Matchmaker Error: " .. tostring(err))
-    -- Return error safely
-    return (nk.json_encode({ error = tostring(err) }))
+    nk.logger_error("Matchmaker Failed: " .. tostring(err))
+    return (nk.json_encode({ error = "Matchmaker Failed", details = tostring(err) }))
   end
 
   -- 6. Success Response
