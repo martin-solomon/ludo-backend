@@ -3,7 +3,7 @@ local nk = require("nakama")
 local function rpc_quick_join(context, payload)
   -- 1. Security Check
   if not context.user_id then
-    return nk.json_encode({ error = "unauthorized" }), 401
+    return (nk.json_encode({ error = "unauthorized" }))
   end
 
   -- 2. Decode Payload
@@ -23,11 +23,11 @@ local function rpc_quick_join(context, payload)
   local query = "+properties.mode:" .. mode
 
   -- 4. Define Properties
-  -- CRITICAL FIX: string_props MUST be passed to argument 7, NOT argument 8.
   local string_props = { mode = mode }
   local numeric_props = {} 
 
-  -- 5. Add to Matchmaker (Wrapped in pcall for safety)
+  -- 5. Add to Matchmaker (7-Argument Version)
+  -- We REMOVED the number '1' (count_multiple). It does not exist in your Nakama version.
   local success, err = pcall(
     nk.matchmaker_add,
     context.user_id,      -- 1. User
@@ -35,19 +35,17 @@ local function rpc_quick_join(context, payload)
     query,                -- 3. Query
     max_count,            -- 4. Min
     max_count,            -- 5. Max
-    1,                    -- 6. Count Multiple
-    string_props,         -- 7. String Props (TEXT GOES HERE)
-    numeric_props         -- 8. Numeric Props (NUMBERS GO HERE)
+    string_props,         -- 6. String Props (Table) -> CORRECT SLOT
+    numeric_props         -- 7. Numeric Props (Table) -> CORRECT SLOT
   )
 
   if not success then
     nk.logger_error("Matchmaker Error: " .. tostring(err))
-    -- FIX: Return error as single value
+    -- Return error safely
     return (nk.json_encode({ error = tostring(err) }))
   end
 
   -- 6. Success Response
-  -- CRITICAL FIX: The ( ) around nk.json_encode discards the second return value.
   return (nk.json_encode({
     status = "searching",
     mode = mode,
