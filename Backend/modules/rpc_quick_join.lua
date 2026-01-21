@@ -22,20 +22,18 @@ local function rpc_quick_join(context, payload)
     team_2v2 = 4
   })[mode] or 2
 
-  -- 4. Create the Search Query (This MUST be a String)
-  -- We search for matches that have the same 'mode' property
+  -- 4. Create the Search Query
   local query = "+properties.mode:" .. mode
 
-  -- 5. Add to Matchmaker
+  -- 5. Add to Matchmaker (The SAFE Version)
+  -- We removed the '1' (count_multiple) and 'nil' (numeric_props) to prevent the crash.
   nk.matchmaker_add(
-    context.user_id,        -- 1. Who (User ID)
-    context.session_id,     -- 2. Session
-    query,                  -- 3. Query (FIXED: Now it is a String!)
-    max_count,              -- 4. Min Players
-    max_count,              -- 5. Max Players
-    1,                      -- 6. Count Multiple
-    nil,                    -- 7. Numeric Properties (None)
-    { mode = mode }         -- 8. String Properties (FIXED: Table goes here!)
+    context.user_id,        -- 1. User ID
+    context.session_id,     -- 2. Session ID
+    query,                  -- 3. Query
+    max_count,              -- 4. Min Count
+    max_count,              -- 5. Max Count
+    { mode = mode }         -- 6. String Properties (This contains your mode!)
   )
 
   return nk.json_encode({
