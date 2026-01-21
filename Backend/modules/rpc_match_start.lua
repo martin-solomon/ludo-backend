@@ -1,14 +1,10 @@
--- rpc_match_start.lua
 local nk = require("nakama")
 
 local function match_start(context, payload)
-  -- 1. Authentication check
   if not context.user_id then
     return nk.json_encode({ error = "not_authenticated" })
   end
 
-  -- 2. Read matchmaking result from storage
-  -- This must be written when match is created in main.lua
   local records = nk.storage_read({
     {
       collection = "matchmaking",
@@ -17,32 +13,39 @@ local function match_start(context, payload)
     }
   })
 
-  -- 3. If no match yet → still waiting
   if not records or #records == 0 then
-    return nk.json_encode({
-      status = "waiting"
-    })
+    return nk.json_encode({ status = "waiting" })
   end
 
   local match_id = records[1].value.matchId
   if not match_id then
-    return nk.json_encode({
-      status = "waiting"
-    })
+    return nk.json_encode({ status = "waiting" })
   end
 
-  -- 4. Verify match still exists (safety)
   local ok, match = pcall(nk.match_get, match_id)
   if not ok or not match then
-    return nk.json_encode({
-      status = "waiting"
-    })
+    return nk.json_encode({ status = "waiting" })
   end
 
-  -- 5. Match is ready
+  -- determine max players
+  local max_players = 2
+  local mode = match.state and match.state.mode or "solo_1v1"
+  if mode == "duo_3p" then max_players = 3 end
+  if mode == "solo_4p" or mode == "team_2v2" then max_players = 4 end
+
+  -- 🔥 CLEAN UP STORAGE (IMPORTANT)
+  nk.storage_delete({
+    {
+      collection = "matchmaking",
+      key = "active_match",
+      user_id = context.user_id
+    }
+  })
+
   return nk.json_encode({
     status = "ready",
-    matchId = match_id
+    matchId = match_id,
+    maxPlayers = max_players
   })
 end
 
