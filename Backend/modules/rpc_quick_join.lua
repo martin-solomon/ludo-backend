@@ -31,7 +31,6 @@ local function rpc_quick_join(context, payload)
   local ok, err = pcall(
     nk.matchmaker_add,
     context.user_id,
-    context.session_id,
     query,
     max_count,
     max_count,
@@ -55,3 +54,4 @@ local function rpc_quick_join(context, payload)
 end
 
 nk.register_rpc(rpc_quick_join, "rpc_quick_join")
+
