@@ -6,8 +6,6 @@ local M = {}
 -- CONFIGURATION & CONSTANTS
 --------------------------------------------------
 
--- 1. FIX: Random Seed (Ensures dice are truly random every time)
-math.randomseed(os.time())
 
 local FINAL_HOME_POS = 100
 local TURN_TIME_SECONDS = 12       -- Time to roll dice
@@ -380,3 +378,4 @@ end
 function M.match_terminate() end
 
 return M
+
