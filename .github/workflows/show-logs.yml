@@ -25,7 +25,7 @@ jobs:
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=["echo Hello from GitHub Actions", "uptime"]' \
+            --parameters 'commands=["docker ps | grep heroiclabs | awk {'print $1'} | xargs docker logs --tail=100"]' \
             --query "Command.CommandId" \
             --output text)
 
