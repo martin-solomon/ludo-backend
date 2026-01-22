@@ -28,7 +28,7 @@ local function rpc_quick_join(context, payload)
   if mode == "duo_3p" then max_count = 3 end
   if mode == "solo_4p" or mode == "team_2v2" then max_count = 4 end
 
-  local query = "+mode:" .. mode
+  local query = "+properties.mode:" .. mode
   
   -- 4. Define Properties
   local string_props = { mode = mode }
@@ -62,4 +62,5 @@ local function rpc_quick_join(context, payload)
 end
 
 nk.register_rpc(rpc_quick_join, "rpc_quick_join")
+
 
