@@ -1,79 +1,39 @@
 local nk = require("nakama")
 
 local function rpc_quick_join(context, payload)
-  -- 1. Authentication check
-  if not context.user_id then
-    return nk.json_encode({
-      error = "unauthorized",
-      message = "User authentication required"
-    })
+  nk.logger_warn("--- 🔍 DIAGNOSTIC START: INSPECTING 'nk' VARIABLE ---")
+
+  -- 1. Check if nk itself is broken
+  if type(nk) ~= "table" then
+    nk.logger_error("❌ CRITICAL: 'nk' is NOT a table. It is: " .. type(nk))
+    return nk.json_encode({ status = "debug", message = "nk is broken" })
   end
 
-  -- 2. Decode payload
-  local data = {}
-  if payload and payload ~= "" then
-    data = nk.json_decode(payload)
+  -- 2. Print every single key found in nk
+  local found_keys = {}
+  for key, value in pairs(nk) do
+    table.insert(found_keys, key)
+  end
+  table.sort(found_keys) -- Sort alphabetically for easier reading
+
+  nk.logger_info("ℹ️ Found " .. #found_keys .. " keys in 'nk' object:")
+  for _, key in ipairs(found_keys) do
+    nk.logger_info("   👉 " .. key)
   end
 
-  local mode = data.mode or "solo_1v1"
-  nk.logger_info("RPC Quick Join: " .. context.user_id .. " -> " .. mode)
-
-  -- 3. Player count
-  local max_count = 2
-  if mode == "duo_3p" then max_count = 3 end
-  if mode == "solo_4p" or mode == "team_2v2" then max_count = 4 end
-
-  -- 4. Matchmaker query
-  local query = "+properties.mode:" .. mode
-  local string_props = { mode = mode }
-  local numeric_props = {} 
-
-  -- 5. Call matchmaker (With Version Fallback)
-  local ok, err
-
-  -- CHECK: Does the standard function exist?
+  -- 3. Specifically check for matchmaker_add
   if nk.matchmaker_add then
-    -- ✅ Use standard Nakama 3.x function
-    ok, err = pcall(
-      nk.matchmaker_add,
-      context.user_id,
-      query,
-      max_count,
-      max_count,
-      string_props,
-      numeric_props
-    )
+    nk.logger_info("✅ SUCCESS: nk.matchmaker_add EXISTS!")
   else
-    -- ⚠️ FALLBACK: Try older Nakama function name
-    nk.logger_warn("nk.matchmaker_add missing. Trying nk.matchmaker_add_join...")
-    if nk.matchmaker_add_join then
-        ok, err = pcall(
-          nk.matchmaker_add_join, -- Older function name
-          context.user_id,
-          query,
-          max_count,
-          max_count,
-          string_props,
-          numeric_props
-        )
-    else
-        ok = false
-        err = "CRITICAL: No matchmaker function found on this server version."
-    end
+    nk.logger_error("❌ FAILURE: nk.matchmaker_add is MISSING!")
   end
 
-  if not ok then
-    nk.logger_error("Matchmaker CRASHED: " .. tostring(err))
-    return nk.json_encode({
-      error = "matchmaker_failed",
-      message = "Unable to join matchmaking"
-    })
-  end
+  nk.logger_warn("--- 🔍 DIAGNOSTIC END ---")
 
-  -- 6. Success
+  -- Return dummy response so app doesn't freeze
   return nk.json_encode({
-    status = "searching",
-    mode = mode
+    status = "debug_mode",
+    message = "Check server logs for diagnostic output"
   })
 end
 
