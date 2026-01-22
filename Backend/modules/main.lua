@@ -1,22 +1,35 @@
--- main.lua
--- Central loader for Nakama Lua modules. Uses safe_require so a broken module
--- doesn't stop the whole runtime from starting.
-
+-- main.lua (Debug Trap Version)
 local nk = require("nakama")
 
--- ✅ Seed RNG ONCE for entire server (dice randomness)
+-- 🔍 TRAP FUNCTION: Checks if the matchmaker function is still alive
+local function check_health(stage_name)
+  if not nk.matchmaker_add then
+    nk.logger_error("❌ CRITICAL: 'nk.matchmaker_add' WAS DELETED BY: " .. stage_name)
+  else
+    nk.logger_info("✅ OK: matchmaker exists after " .. stage_name)
+  end
+end
+
+-- 1. Check immediately at startup
+check_health("STARTUP (Initial Load)")
+
+-- ✅ Seed RNG ONCE
 math.randomseed(os.time())
 
--- 0) Optional helpers (non-fatal)
+-- 0) Optional helpers
 pcall(function() require("main_helpers") end)
 
--- Helper: safely require a module and log any error without crashing startup.
+-- Helper: safely require a module and log any error
 local function safe_require(name)
   local ok, result = pcall(require, name)
   if not ok then
     nk.logger_error("main.lua: require '" .. name .. "' failed: " .. tostring(result))
     return nil, result
   end
+  
+  -- 🔍 TRAP: Check if this specific file killed the matchmaker
+  check_health("Loading " .. name)
+  
   nk.logger_info("main.lua: required '" .. name .. "'")
   return result, nil
 end
@@ -52,55 +65,37 @@ if not match_mod then
 end
 
 ------------------------------------------------
--- 3.5) Matchmaker → Match bridge (REQUIRED)
+-- 3.5) Matchmaker -> Match bridge (REQUIRED)
 ------------------------------------------------
-
--- ✅ Named function (authoritative match creation)
 local function on_matchmaker_matched(context, matched_users)
-  if not matched_users or #matched_users == 0 then
-    return
-  end
-
+  if not matched_users or #matched_users == 0 then return end
   local mode = matched_users[1].properties.mode or "solo_1v1"
+  local match_id = nk.match_create("ludo_match", { mode = mode })
 
-  -- Create authoritative match
-  local match_id = nk.match_create("ludo_match", {
-    mode = mode
-  })
-
-  -- Join all matched users
   for _, user in ipairs(matched_users) do
     nk.match_join(match_id, user.user_id, user.session_id)
   end
 
-  -- ✅ Store match id for frontend polling (secure permissions)
   for _, user in ipairs(matched_users) do
     nk.storage_write({
       {
         collection = "matchmaking",
         key = "active_match",
         user_id = user.user_id,
-        value = {
-          matchId = match_id
-        },
-        permission_read = 1,   -- owner read
-        permission_write = 0   -- server only
+        value = { matchId = match_id },
+        permission_read = 1,
+        permission_write = 0
       }
     })
   end
-
-  nk.logger_info(
-    "Matchmaker created ludo_match " .. match_id ..
-    " | mode=" .. mode ..
-    " | players=" .. #matched_users
-  )
+  nk.logger_info("Matchmaker created ludo_match " .. match_id)
 end
 
--- ✅ SAFETY: prevent duplicate registration (hot reload / restart safe)
 if not _G.__MATCHMAKER_REGISTERED then
   nk.register_matchmaker_matched(on_matchmaker_matched)
   _G.__MATCHMAKER_REGISTERED = true
 end
+check_health("Matchmaker Registration Block") -- Check here too
 
 ------------------------------------------------
 -- 4) Match-related RPCs
