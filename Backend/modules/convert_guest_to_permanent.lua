@@ -77,13 +77,15 @@ existing_profile.active_avatar =
     return nk.json_encode({ error = "account_update_failed" }), 409
   end
 
-  local profile_value = {
-    username = username,
-    email = email,
-    guest = false,
-    converted = true,
-    converted_at = nk.time() * 1000
-  }
+  --------------------------------------------------------
+  -- ✅ FIX: MERGE INTO EXISTING PROFILE (NOT OVERWRITE)
+  --------------------------------------------------------
+  existing_profile.username = username
+  existing_profile.email = email
+  existing_profile.guest = false
+  existing_profile.converted = true
+  existing_profile.converted_at = nk.time() * 1000
+  --------------------------------------------------------
 
   local profile_obj = {
     collection = "user_profiles",
@@ -113,4 +115,5 @@ existing_profile.active_avatar =
 end
 
 nk.register_rpc(convert_guest_to_permanent, "convert_guest_to_permanent")
+
 
