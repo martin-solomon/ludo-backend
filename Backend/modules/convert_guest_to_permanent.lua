@@ -1,5 +1,7 @@
 local nk = require("nakama")
 local inventory = require("inventory_helper")
+local avatar_catalog = require("avatar_catalog")
+
 
 local function parse_rpc_payload(payload)
   if payload == nil then return {} end
@@ -42,7 +44,19 @@ local function convert_guest_to_permanent(context, payload)
   if existing_profile.converted == true then
     return nk.json_encode({ error = "already_converted" }), 409
   end
+--------------------------------------------------------
+  -- avatart change
+  -- Ensure avatar ownership exists
+--------------------------------------------------------
+existing_profile.avatars = existing_profile.avatars or {
+  avatar_catalog.DEFAULT.id
+}
 
+-- Ensure active avatar exists
+existing_profile.active_avatar =
+  existing_profile.active_avatar
+  or avatar_catalog.DEFAULT
+--------------------------------------------------------
   local users = nk.users_get_username({ username })
   if users and #users > 0 then
     return nk.json_encode({ error = "username_taken" }), 409
@@ -99,3 +113,4 @@ local function convert_guest_to_permanent(context, payload)
 end
 
 nk.register_rpc(convert_guest_to_permanent, "convert_guest_to_permanent")
+
