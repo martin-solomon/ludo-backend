@@ -1,4 +1,5 @@
 local nk = require("nakama")
+local avatar_catalog = require("avatar_catalog")
 
 local function player_list(context, payload)
   -- 1. Parse Payload
@@ -19,10 +20,8 @@ local function player_list(context, payload)
   end
 
   -- 3. Identify Who is Sitting Where
-  -- We read the 'seat_owners' table we just added to ludo_match.lua
   local user_seat_map = {}
   if match.state and match.state.seat_owners then
-    -- Reverse the map: Seat->User becomes User->Seat
     for seat, uid in pairs(match.state.seat_owners) do
       user_seat_map[uid] = seat
     end
@@ -32,7 +31,6 @@ local function player_list(context, payload)
   local user_ids = {}
   local presences = match.presences or {}
   
-  -- Use seat owners if available (most reliable), otherwise presences
   if match.state and match.state.seat_owners then
     for _, uid in pairs(match.state.seat_owners) do
       table.insert(user_ids, uid)
@@ -52,21 +50,33 @@ local function player_list(context, payload)
   local enriched_list = {}
 
   for _, user in ipairs(users) do
-    local metadata = {}
-    if user.metadata and user.metadata ~= "" then
-      local status, res = pcall(nk.json_decode, user.metadata)
-      if status then metadata = res end
+
+    ----------------------------------------------------------
+    -- ✅ AVATAR LOGIC (REPLACED ONLY THIS PART)
+    ----------------------------------------------------------
+    local objects = nk.storage_read({
+      { collection = "user_profiles", key = user.id, user_id = user.id }
+    })
+
+    local profile = objects and objects[1] and objects[1].value or {}
+
+    local avatar = profile.active_avatar
+    if not avatar or not avatar_catalog.is_valid(avatar.id) then
+      avatar = avatar_catalog.DEFAULT
     end
+    ----------------------------------------------------------
 
     table.insert(enriched_list, {
       userId = user.id,
       username = user.username,
       displayName = user.display_name or user.username,
-      avatarId = metadata.avatarId or "1",
-      level = metadata.level or 1,
-      
-      -- ✅ NEW: Send the correct seat number!
-      -- Frontend uses this to rotate the board (If I am 3, rotate board so 3 is bottom)
+
+      -- NEW AVATAR FIELD
+      avatar = avatar,
+
+      level = profile.level or 1,
+
+      -- Seat logic untouched
       seat = user_seat_map[user.id] or 0 
     })
   end
