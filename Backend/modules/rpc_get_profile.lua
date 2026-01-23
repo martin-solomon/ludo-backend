@@ -1,17 +1,8 @@
 local nk = require("nakama")
+local avatar_catalog = require("avatar_catalog")
 
 -- =========================================================
 -- PHASE-1 : USER PROFILE (PUBLIC + SELF UPDATE)
--- =========================================================
--- Covers:
---   STEP-1 : Public profile schema (locked)
---   STEP-2 : Public profile fetch (self + opponent)
---   STEP-3 : Self profile update (name + avatar)
---
--- IMPORTANT RULES:
---   - Session (context.user_id) is source of truth
---   - payload.user_id is OPTIONAL (only for opponent fetch)
---   - Wallet / coins / xp are NOT part of profile
 -- =========================================================
 
 
@@ -42,17 +33,26 @@ local function rpc_get_user_profile(context, payload)
     else
         profile = {
             display_name = "Player",
-            avatar_id = "default",
             level = 1,
             stats = { matches = 0, wins = 0 }
         }
     end
 
+    ----------------------------------------------------------
+    -- ✅ NEW AVATAR LOGIC (REPLACED)
+    ----------------------------------------------------------
+    local avatar = profile.active_avatar
+
+    if not avatar or not avatar_catalog.is_valid(avatar.id) then
+        avatar = avatar_catalog.DEFAULT
+    end
+    ----------------------------------------------------------
+
     return nk.json_encode({
         display_name = profile.display_name or "Player",
-        avatar_id   = profile.avatar_id   or "default",
-        level       = profile.level       or 1,
-        stats       = profile.stats       or { matches = 0, wins = 0 }
+        avatar = avatar,
+        level  = profile.level or 1,
+        stats  = profile.stats or { matches = 0, wins = 0 }
     })
 end
 
@@ -78,7 +78,7 @@ local function rpc_update_profile(context, payload)
     end
 
     if data.avatar_id then
-        if type(data.avatar_id) ~= "string" or #data.avatar_id == 0 then
+        if type(data.avatar_id) ~= "string" or not avatar_catalog.is_valid(data.avatar_id) then
             return nk.json_encode({ error = "invalid_avatar_id" })
         end
     end
@@ -92,8 +92,17 @@ local function rpc_update_profile(context, payload)
         profile = objects[1].value or {}
     end
 
-    if data.display_name then profile.display_name = data.display_name end
-    if data.avatar_id then profile.avatar_id = data.avatar_id end
+    if data.display_name then
+        profile.display_name = data.display_name
+    end
+
+    ----------------------------------------------------------
+    -- ✅ NEW AVATAR UPDATE LOGIC (REPLACED)
+    ----------------------------------------------------------
+    if data.avatar_id then
+        profile.active_avatar = avatar_catalog.get(data.avatar_id)
+    end
+    ----------------------------------------------------------
 
     profile.level = profile.level or 1
     profile.stats = profile.stats or { matches = 0, wins = 0 }
@@ -123,12 +132,10 @@ local function ensure_wallet_initialized(user_id)
     local account = nk.account_get_id(user_id)
     local wallet = account.wallet or {}
 
-    -- If coins already exist, DO NOTHING
     if wallet.coins ~= nil then
         return
     end
 
-    -- Give default starting coins (ONE TIME ONLY)
     nk.wallet_update(
         user_id,
         { coins = 1000 },
@@ -147,8 +154,6 @@ local function rpc_get_wallet(context, payload)
     end
 
     local user_id = context.user_id
-
-    -- 🔥 AUTO-INIT WALLET IF NEEDED
     ensure_wallet_initialized(user_id)
 
     local account = nk.account_get_id(user_id)
@@ -163,7 +168,7 @@ nk.register_rpc(rpc_get_wallet, "rpc_get_wallet")
 
 
 -- =========================================================
--- PHASE-2 : SPEND COINS (SHOP / ASSET PURCHASE)
+-- PHASE-2 : SPEND COINS
 -- =========================================================
 local function rpc_spend_coins(context, payload)
 
@@ -207,7 +212,7 @@ nk.register_rpc(rpc_spend_coins, "rpc_spend_coins")
 
 
 -- =========================================================
--- PHASE-2 : ADD COINS (MATCH REWARD / BONUS)
+-- PHASE-2 : ADD COINS
 -- =========================================================
 local function rpc_add_coins(context, payload)
 
