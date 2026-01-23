@@ -78,7 +78,7 @@ local function create_guest_profile(context, payload)
   nk.storage_write({
     {
       collection = "user_profiles",
-      key = "profile",
+      key = user_id,
       user_id = user_id,
       value = {
         username = username,
@@ -106,4 +106,5 @@ local function create_guest_profile(context, payload)
 end
 
 nk.register_rpc(create_guest_profile, "create_guest_profile")
+
 
