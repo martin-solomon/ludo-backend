@@ -44,6 +44,11 @@ end
 ------------------------------------------------
 safe_require("utils_rpc")
 
+----------------------------------------------
+-- avatar
+------------------------------------------------
+safe_require("avatar_catalog")
+
 ------------------------------------------------
 -- 2) Account / profile lifecycle RPCs
 ------------------------------------------------
@@ -127,10 +132,7 @@ safe_require("rpc_claim_daily_login_reward")
 safe_require("rpc_get_daily_tasks")
 safe_require("rpc_claim_daily_task")
 
-----------------------------------------------
--- avatar
-------------------------------------------------
-safe_require("avatar_catalog")
+
 
 
 nk.logger_info("main.lua loaded: Modules loaded and matchmaker repaired.")
