@@ -1,6 +1,7 @@
 -- create_guest_profile.lua (PRODUCTION SAFE)
 local nk = require("nakama")
 local daily_login_rewards = require("daily_login_rewards") -- ✅ SAME FILE
+local avatar_catalog = require("avatar_catalog")
 local STARTING_COINS = 1000
 
 local function trim(s)
@@ -83,6 +84,8 @@ local function create_guest_profile(context, payload)
         username = username,
         display_name = username,
         guest = true,
+        avatars = { avatar_catalog.DEFAULT.id },
+        active_avatar = avatar_catalog.DEFAULT,
         created_at = os.time()
       },
       permission_read = 2,
@@ -103,3 +106,4 @@ local function create_guest_profile(context, payload)
 end
 
 nk.register_rpc(create_guest_profile, "create_guest_profile")
+
