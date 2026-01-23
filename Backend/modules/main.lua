@@ -48,6 +48,7 @@ safe_require("utils_rpc")
 -- avatar
 ------------------------------------------------
 safe_require("avatar_catalog")
+safe_require("rpc_avatar_health_check")
 
 ------------------------------------------------
 -- 2) Account / profile lifecycle RPCs
