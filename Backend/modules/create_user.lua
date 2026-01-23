@@ -1,6 +1,7 @@
 local nk = require("nakama")
 local inventory = require("inventory_helper")
 local daily_login_rewards = require("daily_login_rewards") -- ✅ USE SAME FILE NAME
+local avatar_catalog = require("avatar_catalog")
 
 local function parse_rpc_payload(payload)
   if payload == nil then return {} end
@@ -59,6 +60,8 @@ local function create_user_rpc(context, payload)
         guest = false,
         xp = 0,
         level = 1,
+        avatars = { avatar_catalog.DEFAULT.id },
+        active_avatar = avatar_catalog.DEFAULT,
         created_at = nk.time() * 1000
       },
       permission_read = 2,
@@ -80,3 +83,4 @@ local function create_user_rpc(context, payload)
 end
 
 nk.register_rpc(create_user_rpc, "create_user")
+
