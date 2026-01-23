@@ -1,4 +1,5 @@
 local nk = require("nakama")
+local avatar_catalog = require("avatar_catalog")
 
 local function rpc_get_leaderboard(context, payload)
   if not context or not context.user_id then
@@ -28,13 +29,24 @@ local function rpc_get_leaderboard(context, payload)
 
     local profile = objects and objects[1] and objects[1].value or {}
 
+    ----------------------------------------------------------
+    -- ✅ NEW AVATAR LOGIC (REPLACED)
+    ----------------------------------------------------------
+    local avatar = profile.active_avatar
+    if not avatar or not avatar_catalog.is_valid(avatar.id) then
+      avatar = avatar_catalog.DEFAULT
+    end
+    ----------------------------------------------------------
+
     table.insert(results, {
       rank = record.rank,
       user_id = user_id,
       player_name = profile.username or record.username or "Player",
       level = profile.level or 1,
       wins = record.score,
-      avatar_id = profile.avatar_id or "default"
+
+      -- ✅ NEW FIELD (URL-BASED AVATAR)
+      avatar = avatar
     })
   end
 
