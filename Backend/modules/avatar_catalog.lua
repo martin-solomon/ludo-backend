@@ -16,7 +16,39 @@ M.CATALOG = {
   avatar_3 = {
     id  = "avatar_3",
     url = "https://newcol-api.nlsn.in/assets/magicien_avatar.png"
-  }
+  },
+  avatar_4 = {
+    id  = "avatar_3",
+    url = "https://newcol-api.nlsn.in/assets/piret_avatar.png"
+  },
+  avatar_5 = {
+    id  = "avatar_3",
+    url = "https://newcol-api.nlsn.in/assets/profile_avatar_1.png"
+  },
+  avatar_6 = {
+    id  = "avatar_3",
+    url = "https://newcol-api.nlsn.in/assets/profile_avatar_2.png"
+  },
+  avatar_7 = {
+    id  = "avatar_3",
+    url = "https://newcol-api.nlsn.in/assets/profile_avatar_3.png"
+  }, 
+  avatar_3 = {
+    id  = "avatar_3",
+    url = "https://newcol-api.nlsn.in/assets/profile_avatar_4.png"
+  },
+  avatar_3 = {
+    id  = "avatar_3",
+    url = "https://newcol-api.nlsn.in/assets/profile_avatar_5.png"
+  },
+  avatar_3 = {
+    id  = "avatar_3",
+    url = "https://newcol-api.nlsn.in/assets/queen_avatar.png"
+  },
+  avatar_3 = {
+    id  = "avatar_3",
+    url = "https://newcol-api.nlsn.in/assets/robot_avatar.png"
+  },
 }
 
 -- ✅ Default avatar (used everywhere safely)
@@ -33,3 +65,4 @@ function M.get(avatar_id)
 end
 
 return M
+
