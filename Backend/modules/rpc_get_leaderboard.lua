@@ -24,7 +24,7 @@ local function rpc_get_leaderboard(context, payload)
     local user_id = record.owner_id
 
     local objects = nk.storage_read({
-      { collection = "user_profiles",, key = user_id, user_id = user_id }
+      { collection = "user_profiles", key = user_id, user_id = user_id }
     })
 
     local profile = objects and objects[1] and objects[1].value or {}
@@ -44,8 +44,6 @@ local function rpc_get_leaderboard(context, payload)
       player_name = profile.username or record.username or "Player",
       level = profile.level or 1,
       wins = record.score,
-
-      -- ✅ NEW FIELD (URL-BASED AVATAR)
       avatar = avatar
     })
   end
@@ -57,4 +55,3 @@ local function rpc_get_leaderboard(context, payload)
 end
 
 nk.register_rpc(rpc_get_leaderboard, "get_leaderboard")
-
