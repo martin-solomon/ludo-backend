@@ -33,19 +33,19 @@ M.CATALOG = {
     id  = "avatar_3",
     url = "https://newcol-api.nlsn.in/assets/profile_avatar_3.png"
   }, 
-  avatar_3 = {
+  avatar_8 = {
     id  = "avatar_3",
     url = "https://newcol-api.nlsn.in/assets/profile_avatar_4.png"
   },
-  avatar_3 = {
+  avatar_9 = {
     id  = "avatar_3",
     url = "https://newcol-api.nlsn.in/assets/profile_avatar_5.png"
   },
-  avatar_3 = {
+  avatar_10 = {
     id  = "avatar_3",
     url = "https://newcol-api.nlsn.in/assets/queen_avatar.png"
   },
-  avatar_3 = {
+  avatar_11 = {
     id  = "avatar_3",
     url = "https://newcol-api.nlsn.in/assets/robot_avatar.png"
   },
@@ -65,4 +65,5 @@ function M.get(avatar_id)
 end
 
 return M
+
 
