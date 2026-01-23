@@ -24,7 +24,7 @@ local function rpc_get_leaderboard(context, payload)
     local user_id = record.owner_id
 
     local objects = nk.storage_read({
-      { collection = "profile", key = "player", user_id = user_id }
+      { collection = "user_profiles",, key = user_id, user_id = user_id }
     })
 
     local profile = objects and objects[1] and objects[1].value or {}
@@ -57,3 +57,4 @@ local function rpc_get_leaderboard(context, payload)
 end
 
 nk.register_rpc(rpc_get_leaderboard, "get_leaderboard")
+
