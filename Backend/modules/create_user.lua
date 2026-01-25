@@ -19,26 +19,12 @@ local function create_user_rpc(context, payload)
   end
 
   local input = parse_rpc_payload(payload)
-
   local username = input.username or ""
   local email = input.email or ""
-  local password = input.password or ""
 
-  --------------------------------------------------
-  -- 🔐 REQUIRED VALIDATION
-  --------------------------------------------------
   if username == "" then
     return nk.json_encode({ error = "username_required" }), 400
   end
-
-  if email == "" or password == "" then
-    return nk.json_encode({ error = "email_and_password_required" }), 400
-  end
-
-  --------------------------------------------------
-  -- 🔑 CREATE REAL EMAIL + PASSWORD AUTH (CRITICAL)
-  --------------------------------------------------
-  nk.authenticate_email(email, password, true)
 
   local user_id = context.user_id
 
