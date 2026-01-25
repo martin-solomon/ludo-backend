@@ -1,6 +1,6 @@
 local nk = require("nakama")
 local inventory = require("inventory_helper")
-local daily_login_rewards = require("daily_login_rewards") -- ✅ USE SAME FILE NAME
+local daily_login_rewards = require("daily_login_rewards")
 local avatar_catalog = require("avatar_catalog")
 
 local function parse_rpc_payload(payload)
@@ -13,35 +13,37 @@ local function parse_rpc_payload(payload)
   return {}
 end
 
--------------------------------------------
---new for resetpassword
--------------------------------------------
-local password = input.password or ""
-
-if email == "" or password == "" then
-  return nk.json_encode({ error = "email_and_password_required" }), 400
-end
-
--- 🔑 THIS CREATES REAL EMAIL AUTH
-nk.authenticate_email(email, password, true)
----------------------------------------------------
 local function create_user_rpc(context, payload)
   if not context or not context.user_id then
     return nk.json_encode({ error = "no_session" }), 401
   end
 
   local input = parse_rpc_payload(payload)
+
   local username = input.username or ""
   local email = input.email or ""
+  local password = input.password or ""
 
+  --------------------------------------------------
+  -- 🔐 REQUIRED VALIDATION
+  --------------------------------------------------
   if username == "" then
     return nk.json_encode({ error = "username_required" }), 400
   end
 
+  if email == "" or password == "" then
+    return nk.json_encode({ error = "email_and_password_required" }), 400
+  end
+
+  --------------------------------------------------
+  -- 🔑 CREATE REAL EMAIL + PASSWORD AUTH (CRITICAL)
+  --------------------------------------------------
+  nk.authenticate_email(email, password, true)
+
   local user_id = context.user_id
 
   --------------------------------------------------
-  -- 1️⃣ Account name (UNCHANGED)
+  -- 1️⃣ Account name
   --------------------------------------------------
   nk.account_update_id(user_id, {
     username = username,
@@ -49,7 +51,7 @@ local function create_user_rpc(context, payload)
   })
 
   --------------------------------------------------
-  -- 2️⃣ Wallet init (UNCHANGED, working)
+  -- 2️⃣ Wallet init
   --------------------------------------------------
   nk.wallet_update(
     user_id,
@@ -59,7 +61,7 @@ local function create_user_rpc(context, payload)
   )
 
   --------------------------------------------------
-  -- 3️⃣ Profile metadata (UNCHANGED)
+  -- 3️⃣ Profile metadata
   --------------------------------------------------
   nk.storage_write({
     {
@@ -82,12 +84,12 @@ local function create_user_rpc(context, payload)
   })
 
   --------------------------------------------------
-  -- 4️⃣ Inventory (UNCHANGED)
+  -- 4️⃣ Inventory
   --------------------------------------------------
   inventory.ensure_inventory(user_id)
 
   --------------------------------------------------
-  -- 5️⃣ ✅ DAILY LOGIN STATE (ENSURE ONLY, NEVER RESET)
+  -- 5️⃣ Daily login state
   --------------------------------------------------
   daily_login_rewards.ensure(user_id)
 
@@ -95,5 +97,3 @@ local function create_user_rpc(context, payload)
 end
 
 nk.register_rpc(create_user_rpc, "create_user")
-
-
