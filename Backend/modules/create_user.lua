@@ -13,6 +13,18 @@ local function parse_rpc_payload(payload)
   return {}
 end
 
+-------------------------------------------
+--new for resetpassword
+-------------------------------------------
+local password = input.password or ""
+
+if email == "" or password == "" then
+  return nk.json_encode({ error = "email_and_password_required" }), 400
+end
+
+-- 🔑 THIS CREATES REAL EMAIL AUTH
+nk.authenticate_email(email, password, true)
+---------------------------------------------------
 local function create_user_rpc(context, payload)
   if not context or not context.user_id then
     return nk.json_encode({ error = "no_session" }), 401
@@ -83,4 +95,5 @@ local function create_user_rpc(context, payload)
 end
 
 nk.register_rpc(create_user_rpc, "create_user")
+
 
