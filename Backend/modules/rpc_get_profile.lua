@@ -48,12 +48,22 @@ local function rpc_get_user_profile(context, payload)
     end
     ----------------------------------------------------------
 
-    return nk.json_encode({
-        display_name = profile.display_name or "Player",
-        avatar = avatar,
-        level  = profile.level or 1,
-        stats  = profile.stats or { matches = 0, wins = 0 }
-    })
+local account = nk.account_get_id(target_user_id)
+local account_metadata = account.metadata or {}
+
+local display_name =
+    account_metadata.display_name
+    or profile.display_name
+    or account.username
+    or "Player"
+
+return nk.json_encode({
+    display_name = display_name,
+    avatar = avatar,
+    level  = profile.level or 1,
+    stats  = profile.stats or { matches = 0, wins = 0 }
+})
+
 end
 
 nk.register_rpc(rpc_get_user_profile, "rpc_get_user_profile")
@@ -242,3 +252,4 @@ local function rpc_add_coins(context, payload)
 end
 
 nk.register_rpc(rpc_add_coins, "rpc_add_coins")
+
