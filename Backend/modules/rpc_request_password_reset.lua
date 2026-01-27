@@ -2,15 +2,27 @@ local nk = require("nakama")
 
 math.randomseed(os.time())
 
+-- 🔐 MUST MATCH NAKAMA_HTTP_KEY
+local HTTP_KEY = "ksjdfbhsidjknasdjkdnksajdnskdjndkjsdnskjd"
+
 local function generate_otp()
   return tostring(math.random(100000, 999999)) -- EXACTLY 6 digits
 end
 
 local function request_password_reset(ctx, payload)
+  -- 🔐 HTTP KEY AUTH (REQUIRED)
+  local auth = ctx.http_headers["authorization"]
+  if not auth or auth ~= "Bearer " .. HTTP_KEY then
+    return nk.json_encode({
+      success = false,
+      error = "Unauthorized"
+    }), 401
+  end
+
   local data = nk.json_decode(payload or "{}")
   local email = data.email
 
-  -- Always return success (anti user-enumeration)
+  -- Anti user-enumeration
   if not email or email == "" then
     return nk.json_encode({ success = true })
   end
@@ -34,7 +46,7 @@ local function request_password_reset(ctx, payload)
     }
   })
 
-  -- Send email (SES / SMTP service)
+  -- Send email
   nk.http_request(
     "http://127.0.0.1:8000/send-email",
     "POST",
@@ -52,5 +64,5 @@ local function request_password_reset(ctx, payload)
   return nk.json_encode({ success = true })
 end
 
--- PUBLIC RPC
+-- ✅ PUBLIC RPC (no session required)
 nk.register_rpc(request_password_reset, "request_password_reset", false)
