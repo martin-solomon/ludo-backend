@@ -34,14 +34,27 @@ local function rpc_get_user_profile(context, payload)
         profile = {
             display_name = "Player",
             level = 1,
-            stats = { matches = 0, wins = 0 }
+            stats = { matches = 0, wins = 0 },
+                active_avatar = avatar_catalog.DEFAULT
         }
+
+    -- ✅ SAVE PROFILE ON FIRST FETCH
+        nk.storage_write({
+            {
+                collection = "user_profiles",
+                key = target_user_id,
+                user_id = target_user_id,
+                value = profile,
+                permission_read = 2,
+                permission_write = 1
+            }
+        })
     end
 
     ----------------------------------------------------------
     -- ✅ NEW AVATAR LOGIC (REPLACED)
     ----------------------------------------------------------
-    local avatar = profile.active_avatar
+    local avatar = profile.active_avatar or avatar_catalog.DEFAULT
 
     if not avatar or not avatar_catalog.is_valid(avatar.id) then
         avatar = avatar_catalog.DEFAULT
@@ -252,4 +265,5 @@ local function rpc_add_coins(context, payload)
 end
 
 nk.register_rpc(rpc_add_coins, "rpc_add_coins")
+
 
