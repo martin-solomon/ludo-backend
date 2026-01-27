@@ -63,4 +63,5 @@ local function request_password_reset(ctx, payload)
 end
 
 -- PUBLIC RPC (no session)
-nk.register_rpc(request_password_reset, "request_password_reset")
+nk.register_rpc(request_password_reset, "request_password_reset", false)
+
