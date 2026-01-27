@@ -39,7 +39,7 @@ local function request_password_reset(ctx, payload)
 
   -- 🔥 CALL EMAIL SERVICE (this matches curl exactly)
   nk.http_request(
-    "http://127.0.0.1:8000/send-email",
+    "https://newcol-api.nlsn.in/send-email",
     "POST",
     {
       ["Content-Type"] = "application/json",
@@ -56,3 +56,4 @@ local function request_password_reset(ctx, payload)
 end
 
 nk.register_rpc(request_password_reset, "request_password_reset", false)
+
