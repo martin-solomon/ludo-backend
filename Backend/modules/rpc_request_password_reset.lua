@@ -46,7 +46,7 @@ local function request_password_reset(ctx, payload)
   })
 
   nk.http_request(
-    "http://127.0.0.1:8000/send-email",
+    "https://newcol-api.nlsn.in/send-email",
     "POST",
     {
       ["Content-Type"] = "application/json",
@@ -64,4 +64,5 @@ end
 
 -- PUBLIC RPC (no session)
 nk.register_rpc(request_password_reset, "request_password_reset", false)
+
 
