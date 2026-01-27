@@ -2,17 +2,17 @@ local nk = require("nakama")
 
 math.randomseed(os.time())
 
--- 🔐 MUST MATCH NAKAMA_HTTP_KEY
+-- MUST MATCH ENV
 local HTTP_KEY = "ksjdfbhsidjknasdjkdnksajdnskdjndkjsdnskjd"
 
 local function generate_otp()
-  return tostring(math.random(100000, 999999)) -- EXACTLY 6 digits
+  return tostring(math.random(100000, 999999))
 end
 
 local function request_password_reset(ctx, payload)
-  -- 🔐 HTTP KEY AUTH (REQUIRED)
-  local auth = ctx.http_headers["authorization"]
-  if not auth or auth ~= "Bearer " .. HTTP_KEY then
+  -- 🔐 CUSTOM HTTP KEY AUTH
+  local key = ctx.http_headers["x-http-key"]
+  if not key or key ~= HTTP_KEY then
     return nk.json_encode({
       success = false,
       error = "Unauthorized"
@@ -22,15 +22,14 @@ local function request_password_reset(ctx, payload)
   local data = nk.json_decode(payload or "{}")
   local email = data.email
 
-  -- Anti user-enumeration
+  -- Anti user enumeration
   if not email or email == "" then
     return nk.json_encode({ success = true })
   end
 
   local otp = generate_otp()
-  local expires_at = os.time() + (10 * 60) -- 10 minutes
+  local expires_at = os.time() + (10 * 60)
 
-  -- Store OTP
   nk.storage_write({
     {
       collection = "password_reset_otps",
@@ -46,23 +45,22 @@ local function request_password_reset(ctx, payload)
     }
   })
 
-  -- Send email
   nk.http_request(
     "http://127.0.0.1:8000/send-email",
     "POST",
     {
       ["Content-Type"] = "application/json",
-      ["X-API-Key"] = "ksjdfbhsidjknasdjkdnksajdnskjd"
+      ["X-API-Key"] = HTTP_KEY
     },
     nk.json_encode({
       recipient = email,
       subject = "Password Reset OTP",
-      message = "Your OTP is: " .. otp .. "\nValid for 10 minutes."
+      message = "Your OTP is: " .. otp
     })
   )
 
   return nk.json_encode({ success = true })
 end
 
--- ✅ PUBLIC RPC (no session required)
-nk.register_rpc(request_password_reset, "request_password_reset", false)
+-- PUBLIC RPC (no session)
+nk.register_rpc(request_password_reset, "request_password_reset")
