@@ -2,33 +2,26 @@ local nk = require("nakama")
 
 math.randomseed(os.time())
 
-local HTTP_KEY = "ksjdfbhsidjknasdjkdnksajdnskdjndkjsdnskjd"
+-- Must match Email Service API key
+local EMAIL_API_KEY = "ksjdfbhsidjknasdjkdnksajdnskdjndkjsdnskjd"
 
 local function generate_otp()
   return tostring(math.random(100000, 999999))
 end
 
 local function request_password_reset(ctx, payload)
-  -- Headers are lowercase in Nakama
-  local key = ctx.http_headers["x-http-key"]
-  if not key or key ~= HTTP_KEY then
-    return nk.json_encode({
-      success = false,
-      error = "Unauthorized"
-    }), 401
-  end
-
   local data = nk.json_decode(payload or "{}")
   local email = data.email
 
-  -- Anti user enumeration
+  -- Anti user-enumeration
   if not email or email == "" then
     return nk.json_encode({ success = true })
   end
 
   local otp = generate_otp()
-  local expires_at = os.time() + 600
+  local expires_at = os.time() + (10 * 60)
 
+  -- Store OTP
   nk.storage_write({
     {
       collection = "password_reset_otps",
@@ -44,11 +37,21 @@ local function request_password_reset(ctx, payload)
     }
   })
 
-  -- ✅ DO NOT CALL EMAIL API HERE
-  -- Just log for now
-  nk.logger_info("Password reset OTP generated for: " .. email)
+  -- 🔥 CALL EMAIL SERVICE (this matches curl exactly)
+  nk.http_request(
+    "http://127.0.0.1:8000/send-email",
+    "POST",
+    {
+      ["Content-Type"] = "application/json",
+      ["X-API-Key"] = EMAIL_API_KEY
+    },
+    nk.json_encode({
+      recipient = email,
+      subject = "Password Reset",
+      message = "OTP for resetting your password is " .. otp
+    })
+  )
 
-  -- ✅ RETURN IMMEDIATELY
   return nk.json_encode({ success = true })
 end
 
