@@ -113,7 +113,7 @@ safe_require("rpc_claim_daily_task")
 --------------------------------------------
 safe_require("rpc_request_password_reset")
 safe_require("rpc_confirm_password_reset")
-safe_require("rpc_verify_password_reset_otp")
+
 
 
 nk.logger_info("main.lua loaded: Modules loaded and matchmaker repaired.")
