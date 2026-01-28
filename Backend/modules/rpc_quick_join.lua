@@ -1,95 +1,130 @@
 local nk = require("nakama")
 
--- 🚑 SELF-HEALING HELPER
--- If the server broke matchmaker_add, this function forces a fresh reload to fix it.
-local function get_safe_matchmaker()
-    -- 1. If it exists, return it immediately (Fast Path)
-    if nk.matchmaker_add then 
-        return nk.matchmaker_add 
-    end
-
-    -- 2. If missing, attempt emergency repair
-    nk.logger_warn("⚠️ EMERGENCY: nk.matchmaker_add is missing. Attempting Hot-Fix...")
-
-    -- Force clear the cached module
-    package.loaded["nakama"] = nil 
-    
-    -- Require it again to get a fresh, clean copy
-    local fresh_nk = require("nakama")
-
-    if fresh_nk and fresh_nk.matchmaker_add then
-        -- Repair the global reference for this file
-        nk = fresh_nk 
-        nk.logger_info("✅ SUCCESS: nk.matchmaker_add restored via Hot-Fix!")
-        return fresh_nk.matchmaker_add
-    else
-        nk.logger_error("❌ CRITICAL: Hot-Fix failed. matchmaker_add is seemingly gone from the server binary.")
-        return nil
-    end
-end
+--[[
+  MANUAL MATCHMAKING (RPC + STORAGE)
+  - Replaces broken nk.matchmaker_add
+  - Uses Storage as a "Waiting Room"
+  - Handles Race Conditions with Retry Loop
+]]
 
 local function rpc_quick_join(context, payload)
-  -- 1. Get the Matchmaker Function (Healing if necessary)
-  local matchmaker_add_fn = get_safe_matchmaker()
-  
-  if not matchmaker_add_fn then
-      return nk.json_encode({
-          error = "server_error",
-          message = "Matchmaking service unavailable"
-      })
-  end
-
-  -- 2. Authentication check
-  if not context.user_id then
-    return nk.json_encode({
-      error = "unauthorized",
-      message = "User authentication required"
-    })
-  end
-
-  -- 3. Decode payload
+  -- 1. Parse Payload
   local data = {}
   if payload and payload ~= "" then
-    data = nk.json_decode(payload)
+    local status, res = pcall(nk.json_decode, payload)
+    if status then data = res end
   end
 
-  local mode = data.mode or "solo_1v1"
-  nk.logger_info("RPC Quick Join: " .. context.user_id .. " -> " .. mode)
+  -- 2. Determine Mode & Requirements
+  local mode = data.mode or "solo" -- Default to solo
+  local needed_players = 2
+  
+  if mode == "clash" then needed_players = 3 end
+  if mode == "rush"  then needed_players = 4 end
+  if mode == "team"  then needed_players = 4 end
 
-  -- 4. Player count logic
-  local max_count = 2
-  if mode == "duo_3p" then max_count = 3 end
-  if mode == "solo_4p" or mode == "team_2v2" then max_count = 4 end
+  -- 3. Define Storage Key
+  -- Separate keys ensure Solo players don't join Team matches
+  local storage_key = "waiting_room_" .. mode
+  local collection = "matchmaking_manual"
 
-  -- 5. Matchmaker query
-  local query = "+properties.mode:" .. mode
-  local string_props = { mode = mode }
-  local numeric_props = {} 
+  -- 4. THE RETRY LOOP (Safety against 1000 players)
+  -- If a seat is stolen while we try to write, we loop back and try again.
+  for attempt = 1, 5 do
+    
+    -- A. READ STORAGE
+    local objects = nk.storage_read({
+      { collection = collection, key = storage_key }
+    })
+    
+    local room = nil
+    local version = nil
+    
+    if objects and #objects > 0 then
+      room = objects[1].value
+      version = objects[1].version
+    end
 
-  -- 6. Call matchmaker (Using the safe function)
-  local ok, err = pcall(
-    matchmaker_add_fn, -- ✅ Using our repaired function variable
-    context.user_id,
-    query,
-    max_count,
-    max_count,
-    string_props,
-    numeric_props
-  )
+    -------------------------------------------------
+    -- SCENARIO 1: ROOM EXISTS (Try to Join)
+    -------------------------------------------------
+    if room then
+      -- Safety Check: Is room already full? (Should have been deleted, but just in case)
+      if room.count >= needed_players then
+        -- Force delete and retry loop to create new one
+        pcall(nk.storage_delete, {{ collection = collection, key = storage_key, version = version }})
+      
+      else
+        -- Join logic
+        local new_count = room.count + 1
+        local is_full = (new_count >= needed_players)
+        
+        if is_full then
+          -- ROOM FULL: Delete the key so no one else joins
+          local del_ops = {{ collection = collection, key = storage_key, version = version }}
+          local ok, err = pcall(nk.storage_delete, del_ops)
+          
+          if ok then
+            nk.logger_info("Match Full ("..mode.."): " .. room.match_id)
+            return nk.json_encode({ status = "matched", match_id = room.match_id, mode = mode })
+          else
+             -- Delete failed (someone else updated it?). Retry.
+             nk.logger_warn("Race condition on DELETE. Retrying...")
+          end
+          
+        else
+          -- ROOM OPEN: Increment count
+          local write_ops = {{
+            collection = collection, key = storage_key, version = version,
+            value = { match_id = room.match_id, count = new_count, host_id = room.host_id },
+            permission_read = 1, permission_write = 0
+          }}
+          local ok, err = pcall(nk.storage_write, write_ops)
+          
+          if ok then
+            return nk.json_encode({ status = "matched", match_id = room.match_id, mode = mode })
+          else
+            -- Write failed (someone stole the seat). Retry.
+            nk.logger_warn("Race condition on UPDATE. Retrying...")
+          end
+        end
+      end
 
-  if not ok then
-    nk.logger_error("Matchmaker CRASHED: " .. tostring(err))
-    return nk.json_encode({
-      error = "matchmaker_failed",
-      message = "Unable to join matchmaking"
+    -------------------------------------------------
+    -- SCENARIO 2: NO ROOM (Create New)
+    -------------------------------------------------
+    else
+      -- Create real match
+      local match_id = nk.match_create("ludo_match", { mode = mode })
+      
+      -- Write to Storage (Queue Open)
+      -- We use version="*" to fail if someone created a room 1ms ago
+      local write_ops = {{
+        collection = collection, key = storage_key, 
+        value = { match_id = match_id, count = 1, host_id = context.user_id },
+        permission_read = 1, permission_write = 0,
+        version = "*" 
+      }}
+      
+      local ok, err = pcall(nk.storage_write, write_ops)
+      
+      if ok then
+        nk.logger_info("New Room Created ("..mode.."): " .. match_id)
+        return nk.json_encode({ status = "created", match_id = match_id, mode = mode })
+      else
+        -- Write failed (someone just created a room). Retry to join theirs.
+        nk.logger_warn("Race condition on CREATE. Retrying...")
+      end
+    end
+    
+    -- Small delay to let database settle before retry
+    nk.run_jobs({ 
+      function() return end 
     })
   end
 
-  -- 7. Success Return
-  return nk.json_encode({
-    status = "searching",
-    mode = mode
-  })
+  -- 5. If loop fails 5 times (Extremely rare)
+  return nk.json_encode({ error = "server_busy", message = "High traffic, please try again." }), 503
 end
 
 nk.register_rpc(rpc_quick_join, "rpc_quick_join")
