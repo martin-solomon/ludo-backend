@@ -5,10 +5,7 @@ local nk = require("nakama")
   - Replaces broken nk.matchmaker_add
   - Uses Storage as a "Waiting Room"
   - Handles Race Conditions with Retry Loop
-  - Handles Entry Fee (50 Coins)
 ]]
-
-local ENTRY_FEE = 50 -- Cost to play
 
 local function rpc_quick_join(context, payload)
   -- 1. Parse Payload
@@ -18,32 +15,8 @@ local function rpc_quick_join(context, payload)
     if status then data = res end
   end
 
+  -- 2. Determine Mode & Requirements
   local mode = data.mode or "solo" -- Default to solo
-
-  -- ====================================================
-  -- 💰 STEP 1: WALLET CHECK & DEDUCTION
-  -- ====================================================
-  local user_id = context.user_id
-  local account = nk.account_get_id(user_id)
-  local wallet = account.wallet or {}
-  local coins = wallet.coins or 0
-
-  if coins < ENTRY_FEE then
-    return nk.json_encode({ 
-      error = "insufficient_funds", 
-      message = "You need " .. ENTRY_FEE .. " coins to play!" 
-    })
-  end
-
-  -- Deduct the Entry Fee
-  local status, err = pcall(nk.wallet_update, user_id, { coins = -ENTRY_FEE }, nil, { reason = "match_entry_fee" })
-  if not status then
-    nk.logger_error("Wallet update failed: " .. tostring(err))
-    return nk.json_encode({ error = "wallet_error" })
-  end
-  -- ====================================================
-
-  -- 2. Determine Requirements
   local needed_players = 2
   
   if mode == "clash" then needed_players = 3 end
@@ -150,11 +123,7 @@ local function rpc_quick_join(context, payload)
     })
   end
 
-  -- ====================================================
-  -- 💰 SAFETY: REFUND IF SERVER FAILS
-  -- If we reach here, we took money but failed to find a match. Refund it!
-  -- ====================================================
-  nk.wallet_update(user_id, { coins = ENTRY_FEE }, nil, { reason = "match_entry_refund" })
+  -- 5. If loop fails 5 times (Extremely rare)
   return nk.json_encode({ error = "server_busy", message = "High traffic, please try again." }), 503
 end
 
