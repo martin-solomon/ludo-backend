@@ -1,5 +1,7 @@
 local nk = require("nakama")
 
+local ENTRY_FEE = 50 -- Amount to refund
+
 local function rpc_quick_join_cancel(context, payload)
   if not context.user_id then
     return nk.json_encode({ error = "unauthorized" }), 401
@@ -20,6 +22,7 @@ local function rpc_quick_join_cancel(context, payload)
   })
 
   if not objects or #objects == 0 then
+    -- Room gone (someone joined) -> No refund, match starting soon
     return nk.json_encode({ status = "already_gone" })
   end
 
@@ -37,7 +40,12 @@ local function rpc_quick_join_cancel(context, payload)
     }})
     
     if ok then
-      nk.logger_info("Queue Cancelled by Host: " .. context.user_id)
+      -- ====================================================
+      -- 💰 REFUND THE ENTRY FEE
+      -- ====================================================
+      nk.wallet_update(context.user_id, { coins = ENTRY_FEE }, nil, { reason = "user_cancelled_search" })
+      
+      nk.logger_info("Queue Cancelled & Refunded: " .. context.user_id)
       return nk.json_encode({ status = "cancelled" })
     end
   end
