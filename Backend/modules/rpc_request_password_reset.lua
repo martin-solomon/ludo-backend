@@ -2,59 +2,55 @@ local nk = require("nakama")
 
 math.randomseed(os.time())
 
--- Must match Email Service API key
-local EMAIL_API_KEY = "ksjdfbhsidjknasdjkdnksajdnskdjndkjsdnskjd"
-
-local function generate_otp()
-  return tostring(math.random(100000, 999999))
-end
-
-local function request_password_reset(ctx, payload)
+local function request_password_reset(context, payload)
   local data = nk.json_decode(payload or "{}")
   local email = data.email
+  if not email then error("Email required") end
 
-  -- Anti user-enumeration
-  if not email or email == "" then
-    return nk.json_encode({ success = true })
-  end
+  -- generate OTP (6 digits)
+  local otp = tostring(math.random(100000, 999999))
+  local expiry = os.time() + 300 -- 5 minutes
 
-  local otp = generate_otp()
-  local expires_at = os.time() + (10 * 60)
-
-  -- Store OTP
+  -- store OTP (NO user_id because user is not logged in)
   nk.storage_write({
     {
-      collection = "password_reset_otps",
+      collection = "password_reset",
       key = email,
       user_id = nil,
       value = {
         otp = otp,
-        expires_at = expires_at,
-        verified = false
+        expiry = expiry
       },
       permission_read = 0,
       permission_write = 0
     }
   })
 
-  -- 🔥 CALL EMAIL SERVICE (this matches curl exactly)
-  nk.http_request(
-    "https://newcol-http.nlsn.in/send-email",
+  -- call FastAPI email service
+  local body = nk.json_encode({
+    recipient = email,
+    subject = "Password Reset",
+    message = "Your OTP is " .. otp
+  })
+
+  local headers = {
+    ["Content-Type"] = "application/json",
+    ["X-API-Key"] = "ksjdfbhsidjknasdjkdnksajdnskdjndkjsdnskjd"
+  }
+
+  local res = nk.http_request(
+    "http://host.docker.internal:8000/send-email",
     "POST",
-    {
-      ["Content-Type"] = "application/json",
-      ["X-API-Key"] = EMAIL_API_KEY
-    },
-    nk.json_encode({
-      recipient = email,
-      subject = "Password Reset",
-      message = "OTP for resetting your password is " .. otp
-    })
+    headers,
+    body
   )
 
-  return nk.json_encode({ success = true })
+  if res.code ~= 200 then
+    nk.logger_error("Email send failed: " .. res.body)
+    error("Failed to send email")
+  end
+
+  return nk.json_encode({ status = "OTP_SENT" })
 end
 
 nk.register_rpc(request_password_reset, "request_password_reset", false)
-
-
