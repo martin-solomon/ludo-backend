@@ -87,7 +87,7 @@ local rpc_late = {
   "rpc_quick_join",
   "rpc_player_list",
   "rpc_match_start",
-  "rpc_matchmaker_cancel"
+  "rpc_quick_join_cancel"
 }
 
 for _, m in ipairs(rpc_late) do
