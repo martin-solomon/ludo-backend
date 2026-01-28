@@ -105,61 +105,6 @@ local function should_end_match(state)
   return state.finished_count >= (total - 1)
 end
 
--- Helper to payout rewards
-local function distribute_rewards(state, dispatcher)
-  local total_pot = get_expected_players(state.mode) * 50 -- e.g., 4 * 50 = 200 coins
-  local winners = {}
-
-  -- LOGIC 1: TEAM MODE (2v2) - Winners split 100%
-  if state.mode == "team" then
-    -- Check which team finished (Team A: 1&3, Team B: 2&4)
-    local teamA_finished = check_player_finished(state, 1) and check_player_finished(state, 3)
-    
-    local winning_seats = {}
-    if teamA_finished then 
-        winning_seats = {1, 3} -- Team A Wins
-    else 
-        winning_seats = {2, 4} -- Team B Wins
-    end
-    
-    local payout_per_player = total_pot / 2 -- e.g., 200 / 2 = 100 coins each
-    
-    for _, seat in ipairs(winning_seats) do
-        local uid = state.seat_owners[seat]
-        if uid then
-            nk.wallet_update(uid, { coins = payout_per_player }, nil, { reason = "match_win_team" })
-            table.insert(winners, { seat = seat, amount = payout_per_player })
-        end
-    end
-
-  -- LOGIC 2: SOLO / CLASH / RUSH (Rank based split)
-  else
-    -- Sort seats by Rank (1st, 2nd, 3rd...)
-    local ranked_uids = {}
-    for seat, rank in pairs(state.player_rank) do
-        ranked_uids[rank] = state.seat_owners[seat]
-    end
-
-    -- Define Percentages based on Game Mode
-    local percentages = {}
-    if state.mode == "solo" then        percentages = {1.0}           end -- 1st: 100%
-    if state.mode == "clash" then       percentages = {0.6, 0.4}      end -- 1st: 60%, 2nd: 40%
-    if state.mode == "rush" then        percentages = {0.6, 0.3, 0.1} end -- 1st: 60%, 2nd: 30%, 3rd: 10%
-
-    -- Distribute
-    for rank, pct in ipairs(percentages) do
-        local uid = ranked_uids[rank]
-        if uid then
-            local reward = math.floor(total_pot * pct)
-            nk.wallet_update(uid, { coins = reward }, nil, { reason = "match_win_rank_"..rank })
-            table.insert(winners, { rank = rank, amount = reward })
-        end
-    end
-  end
-  
-  return winners
-end
-
 local function end_match(state, dispatcher)
   if state.match_ended then return end
   state.match_ended = true
@@ -172,14 +117,10 @@ local function end_match(state, dispatcher)
     end
   end
 
-  -- 💰 PAYOUT REWARDS
-  local payouts = distribute_rewards(state, dispatcher)
-
   dispatcher.broadcast_message(1, nk.json_encode({
     type = "GAME_END",
     reason = "NORMAL_END",
-    ranks = state.player_rank,
-    payouts = payouts
+    ranks = state.player_rank
   }))
 end
 
